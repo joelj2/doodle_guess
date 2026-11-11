@@ -2,12 +2,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DataConnection, Peer } from 'peerjs';
 import { ClientMsg, DrawMsg, GameState, H, HostMsg, Stroke, View, W, isDraw } from './types';
-import { WORDS, mask, near, pick } from './words';
+import { WORDS, mask, near, norm, pick, pickN } from './words';
 import { flood } from './flood';
 
 interface Room {
   conns: Record<string, DataConnection>; conn: DataConnection | null; peer: Peer | null;
-  segs: Stroke[]; G: GameState; host: boolean; code: string; timer: ReturnType<typeof setInterval> | null;
+  segs: Stroke[]; used: string[]; G: GameState; host: boolean; code: string; timer: ReturnType<typeof setInterval> | null;
 }
 const blank = (name = ''): GameState => ({
   players: name ? [{ id: 'host', pid: '', name, score: 0 }] : [], phase: 'lobby', round: 0, rounds: 3,
@@ -28,7 +28,7 @@ export function useGame() {
   const [v, setV] = useState<View | null>(null);
   const [peer, setPeer] = useState<Peer | null>(null);
   const cv = useRef<HTMLCanvasElement>(null);
-  const R = useRef<Room>({ conns: {}, conn: null, peer: null, segs: [], G: blank(), host: false, code: '', timer: null }).current;
+  const R = useRef<Room>({ conns: {}, conn: null, peer: null, segs: [], used: [], G: blank(), host: false, code: '', timer: null }).current;
 
   // ---------- canvas ----------
   const ctx = () => cv.current?.getContext('2d', { willReadFrequently: true }) ?? null;
@@ -69,10 +69,10 @@ export function useGame() {
     G.drawer = G.order[G.turn];
     if (!G.players.find((p) => p.id === G.drawer)) return nextTurn();
     G.phase = 'choosing'; G.time = 15; G.word = ''; G.rev = []; G.guessed = {}; G.gain = {};
-    G.opts = [pick(WORDS), pick(WORDS), pick(WORDS)];
+    const pool = WORDS.filter((w) => !R.used.includes(w)); G.opts = pickN(pool.length >= 3 ? pool : WORDS, 3);
     hostOp({ t: 'clr' }); bc();
   };
-  const pickWord = (w: string) => { const G = R.G; G.word = w; G.phase = 'drawing'; G.time = 80; G.rev = []; bc(); };
+  const pickWord = (w: string) => { const G = R.G; R.used.push(w); G.word = w; G.phase = 'drawing'; G.time = 80; G.rev = []; bc(); };
   const endTurn = () => { const G = R.G; G.phase = 'reveal'; G.time = 6; say(`The word was "${G.word}"`, null, true); bc(); };
   const tick = () => {
     const G = R.G; if (!['choosing', 'drawing', 'reveal'].includes(G.phase)) return;
@@ -110,7 +110,7 @@ export function useGame() {
       send(id, { t: 'full', segs: R.segs }); say(`${n} joined the room`, null, true); bc();
     } else if (m.t === 'start') {
       if (id !== 'host' || (G.phase !== 'lobby' && G.phase !== 'end')) return;
-      G.rounds = m.rounds || 3; G.players.forEach((p) => (p.score = 0));
+      G.rounds = m.rounds || 3; R.used = []; G.players.forEach((p) => (p.score = 0));
       G.round = 1; G.turn = -1; G.order = G.players.map((p) => p.id); nextTurn();
     } else if (m.t === 'pick') {
       if (id === G.drawer && G.phase === 'choosing') pickWord(m.w);
@@ -121,7 +121,7 @@ export function useGame() {
       const p = G.players.find((q) => q.id === id); const g = m.text.trim().slice(0, 60);
       if (!p || !g) return;
       const live = G.phase === 'drawing' && id !== G.drawer && !G.guessed[id];
-      if (live && g.toLowerCase() === G.word.toLowerCase()) {
+      if (live && norm(g) === norm(G.word)) {
         G.guessed[id] = 1; award(id, 50 + G.time * 4); award(G.drawer ?? '', 40);
         say(`${p.name} guessed the word!`, null, true, { ok: true });
         if (G.players.filter((q) => q.id !== G.drawer).every((q) => G.guessed[q.id])) return endTurn();
@@ -130,7 +130,7 @@ export function useGame() {
         /* guessers and the drawer can't chat during a round, so the word can't leak */
       } else {
         say(g, p.name);
-        if (live && near(g.toLowerCase(), G.word.toLowerCase())) say(`"${g}" is close!`, null, true, { to: id });
+        if (live && near(norm(g), norm(G.word))) say(`"${g}" is close!`, null, true, { to: id });
         bc();
       }
     }
