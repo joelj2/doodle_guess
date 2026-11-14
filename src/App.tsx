@@ -423,21 +423,44 @@ export default function App() {
   // HTTP mode: adaptive real-time state polling while inside a room
   const roomCode = roomState?.code ?? null;
   const roomPhase = roomState?.phase ?? null;
+  const roomStateRef = useRef<RoomStateSync | null>(null);
+  roomStateRef.current = roomState;
 
   useEffect(() => {
     if (transportMode !== 'http' || !roomCode || !playerId) return;
     let cancelled = false;
     let inFlight = false;
+    let consecutive404 = 0;
 
     const pollState = async () => {
       if (inFlight || cancelled) return;
       inFlight = true;
       try {
         const res = await fetch(
-          `/api/rooms/${encodeURIComponent(roomCode)}/state?playerId=${encodeURIComponent(playerId)}&sinceReaction=${lastReactionTsRef.current}`,
+          `/api/rooms?code=${encodeURIComponent(roomCode)}&playerId=${encodeURIComponent(playerId)}&sinceReaction=${lastReactionTsRef.current}`,
           { cache: 'no-store' }
         );
+        if (res.status === 404) {
+          consecutive404 += 1;
+          const snap = roomStateRef.current;
+          const amHost = snap?.players.find((p) => p.id === playerId)?.isHost;
+          if (amHost && snap && consecutive404 === 1) {
+            // Rehydrate room if serverless container recycled
+            await fetch('/api/rooms', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ op: 'rehydrate', playerId, snapshot: snap }),
+            });
+            return;
+          }
+          if (consecutive404 >= 3) {
+            setRoomState(null);
+            setErrorMsg('Room expired or host disconnected.');
+          }
+          return;
+        }
         if (!res.ok) return;
+        consecutive404 = 0;
         const data = (await res.json()) as {
           ok: boolean;
           state?: RoomStateSync;
@@ -492,7 +515,7 @@ export default function App() {
       }
     };
 
-    const intervalMs = roomPhase === 'DRAWING' || roomPhase === 'CHOOSING_WORD' ? 450 : 900;
+    const intervalMs = roomPhase === 'DRAWING' || roomPhase === 'CHOOSING_WORD' ? 550 : 1000;
     const timer = setInterval(pollState, intervalMs);
     return () => {
       cancelled = true;
@@ -506,10 +529,10 @@ export default function App() {
       const pid = playerId;
       if (!code || !pid) return null;
       try {
-        const res = await fetch(`/api/rooms/${encodeURIComponent(code)}/action`, {
+        const res = await fetch('/api/rooms', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ playerId: pid, type, payload }),
+          body: JSON.stringify({ op: 'action', code, playerId: pid, type, payload }),
         });
         if (!res.ok) return null;
         return (await res.json()) as {
@@ -588,10 +611,10 @@ export default function App() {
           setPlayerId(pid);
           const ctrl = new AbortController();
           const t = setTimeout(() => ctrl.abort(), 8000);
-          const res = await fetch('/api/rooms/create', {
+          const res = await fetch('/api/rooms', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ playerId: pid, name, avatar, settings }),
+            body: JSON.stringify({ op: 'create', playerId: pid, name, avatar, settings }),
             signal: ctrl.signal,
           });
           clearTimeout(t);
@@ -652,10 +675,10 @@ export default function App() {
           setPlayerId(pid);
           const ctrl = new AbortController();
           const t = setTimeout(() => ctrl.abort(), 8000);
-          const res = await fetch('/api/rooms/join', {
+          const res = await fetch('/api/rooms', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code, playerId: pid, name, avatar }),
+            body: JSON.stringify({ op: 'join', code, playerId: pid, name, avatar }),
             signal: ctrl.signal,
           });
           clearTimeout(t);
