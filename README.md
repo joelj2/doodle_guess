@@ -19,3 +19,4 @@ View your app in AI Studio: https://ai.studio/apps/1bcf5d51-cf33-4bcd-b798-204b4
 3. Run the app:
    `npm run dev`
 # DoodleGuess
+# doodle_guess

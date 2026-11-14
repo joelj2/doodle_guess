@@ -2,10 +2,10 @@
 
 import { Headphones, HeadphoneOff, Mic, MicOff, PhoneOff, Volume2 } from 'lucide-react';
 import type { Player } from '../shared/types.ts';
-import type { VoiceChatState } from '../hooks/useVoiceChat.ts';
+import type { PeerVoiceState } from '../hooks/usePeerVoice.ts';
 
 interface VoiceBarProps {
-  voice: VoiceChatState;
+  voice: PeerVoiceState;
   players: Player[];
 }
 
