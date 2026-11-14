@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { AvatarConfig, DrawAction, RoomSettings, RoomStateSync } from '@/src/shared/types.ts';
+import type { AvatarConfig, DrawAction, PublicRoomSummary, RoomSettings, RoomStateSync } from '@/src/shared/types.ts';
 import {
   advanceRoomClock,
   beginWordChoiceOnRoom,
@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
-      op?: 'create' | 'join' | 'action' | 'rehydrate';
+      op?: 'create' | 'join' | 'action' | 'rehydrate' | 'announce';
       code?: string;
       playerId?: string;
       name?: string;
@@ -86,10 +86,31 @@ export async function POST(req: NextRequest) {
       type?: string;
       payload?: unknown;
       snapshot?: RoomStateSync;
+      room?: PublicRoomSummary;
     };
 
     const op = body.op ?? 'action';
     const now = Date.now();
+
+    if (op === 'announce' && body.room) {
+      const summary = body.room;
+      if (summary?.code) {
+        let r = await getRoom(summary.code);
+        if (!r) {
+          r = createRoomObject(makeId('h'), summary.hostName, undefined, {
+            isPublic: true,
+            maxPlayers: summary.maxPlayers,
+            rounds: summary.totalRounds,
+          });
+          r.code = summary.code;
+        }
+        r.phase = summary.phase;
+        r.currentRound = summary.currentRound;
+        r.updatedAt = now;
+        await saveRoom(r);
+      }
+      return NextResponse.json({ ok: true });
+    }
 
     if (op === 'create') {
       const playerId = body.playerId?.trim() || makeId('p');

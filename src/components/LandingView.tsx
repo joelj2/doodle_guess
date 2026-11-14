@@ -135,18 +135,16 @@ export function LandingView({
                     <button
                       type="button"
                       onClick={() => setIsPublicRoom(true)}
-                      className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-                        isPublicRoom ? 'bg-white text-zinc-950 shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
-                      }`}
+                      className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${isPublicRoom ? 'bg-white text-zinc-950 shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
+                        }`}
                     >
                       Public
                     </button>
                     <button
                       type="button"
                       onClick={() => setIsPublicRoom(false)}
-                      className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-                        !isPublicRoom ? 'bg-white text-zinc-950 shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
-                      }`}
+                      className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${!isPublicRoom ? 'bg-white text-zinc-950 shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
+                        }`}
                     >
                       Private
                     </button>
@@ -159,7 +157,7 @@ export function LandingView({
                     value={joinCode}
                     onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                     maxLength={8}
-                    placeholder="Enter room code (e.g. INK42X)"
+                    placeholder="Enter room code (e.g. INK4)"
                     className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-[#F4F2ED] border border-[#E4E2DC] focus:border-zinc-900 focus:bg-white font-mono-tabular text-sm font-semibold uppercase text-zinc-900 placeholder:normal-case placeholder:font-sans placeholder:font-normal placeholder:text-zinc-400 outline-none"
                   />
                   <button
