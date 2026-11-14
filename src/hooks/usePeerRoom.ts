@@ -133,7 +133,6 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [reactions, setReactions] = useState<ReactionEvent[]>([]);
-  const [publicRooms, setPublicRooms] = useState<PublicRoomSummary[]>([]);
   const [peerInstance, setPeerInstance] = useState<Peer | null>(null);
 
   // References to keep callbacks current and handle teardown
@@ -143,7 +142,6 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
   const serverRoomRef = useRef<ServerRoom | null>(null);
   const gameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const prevPhaseRef = useRef<string | null>(null);
   const prevHintCountRef = useRef<number>(0);
   const optionsRef = useRef(options);
@@ -666,50 +664,7 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
     }
   }, []);
 
-  // Announce public room on BroadcastChannel & optional server endpoint
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    try {
-      const bc = new BroadcastChannel('dg_public_rooms');
-      broadcastChannelRef.current = bc;
-      bc.onmessage = (event) => {
-        const data = event.data as { type: string; room?: PublicRoomSummary };
-        if (data.type === 'announce' && data.room) {
-          setPublicRooms((prev) => {
-            const next = prev.filter((r) => r.code !== data.room!.code);
-            return [...next, data.room!];
-          });
-        }
-      };
-    } catch {
-      // BroadcastChannel not available in environment
-    }
-
-    // Also fetch any announced public rooms from API if online
-    const fetchApiRooms = async () => {
-      try {
-        const res = await fetch('/api/rooms', { cache: 'no-store' });
-        if (res.ok) {
-          const data = (await res.json()) as { rooms?: PublicRoomSummary[] };
-          if (Array.isArray(data.rooms)) {
-            setPublicRooms(data.rooms);
-          }
-        }
-      } catch {
-        // ignore
-      }
-    };
-    fetchApiRooms();
-    const pollInterval = setInterval(fetchApiRooms, 5000);
-
-    return () => {
-      clearInterval(pollInterval);
-      broadcastChannelRef.current?.close();
-    };
-  }, []);
-
-  // Heartbeat to keep mobile cellular NAT ports open and announce public room if host
+  // Heartbeat to keep mobile cellular NAT ports open
   useEffect(() => {
     if (!roomState) return;
 
@@ -726,40 +681,6 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
       if (pingTimerRef.current) clearInterval(pingTimerRef.current);
     };
   }, [isHost, roomState, broadcastToGuests]);
-
-  // Host announcement for public rooms
-  useEffect(() => {
-    if (!isHost || !roomState || !roomState.settings.isPublic) return;
-
-    const announce = () => {
-      const me = roomState.players.find((p) => p.id === playerId);
-      const summary: PublicRoomSummary = {
-        code: roomState.code,
-        hostName: me?.name ?? 'Host',
-        playerCount: roomState.players.length,
-        maxPlayers: roomState.settings.maxPlayers,
-        phase: roomState.phase,
-        currentRound: roomState.currentRound,
-        totalRounds: roomState.totalRounds,
-      };
-
-      try {
-        broadcastChannelRef.current?.postMessage({ type: 'announce', room: summary });
-      } catch {
-        // ignore
-      }
-
-      fetch('/api/rooms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ op: 'announce', room: summary }),
-      }).catch(() => {});
-    };
-
-    announce();
-    const timer = setInterval(announce, 4000);
-    return () => clearInterval(timer);
-  }, [isHost, roomState, playerId]);
 
   // Track room phase changes for audio & banners
   useEffect(() => {
@@ -1184,7 +1105,6 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
     errorMsg,
     startError,
     reactions,
-    publicRooms,
     createRoom,
     joinRoom,
     leaveRoom,

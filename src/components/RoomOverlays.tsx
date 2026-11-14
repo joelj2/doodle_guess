@@ -54,8 +54,6 @@ export function LobbyPanel({
           <span>
             {playerCount} / {settings.maxPlayers} players
           </span>
-          <span aria-hidden="true">·</span>
-          <span>{settings.isPublic ? 'Public Room' : 'Private Room'}</span>
         </div>
       </div>
 
@@ -126,13 +124,6 @@ export function LobbyPanel({
       {isHost && (
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => onUpdateSettings({ isPublic: !settings.isPublic })}
-              className="px-3 py-2 rounded-xl bg-[#F4F2ED] hover:bg-zinc-200/70 text-xs font-semibold text-zinc-800 cursor-pointer whitespace-nowrap"
-            >
-              Visibility: {settings.isPublic ? 'Public' : 'Private'}
-            </button>
             <button
               type="button"
               onClick={() => setShowCustomEditor((v) => !v)}

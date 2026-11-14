@@ -1,15 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ArrowRight, CheckCircle2, Lightbulb, Palette, Users } from 'lucide-react';
-import type { AvatarConfig, PublicRoomSummary, RoomSettings } from '../shared/types.ts';
+import { ArrowRight } from 'lucide-react';
+import type { AvatarConfig, RoomSettings } from '../shared/types.ts';
 import { AvatarCustomizer } from './AvatarView.tsx';
 import heroStudioImg from '../assets/images/hero_doodle_studio_1794627023128.jpg';
 
 interface LandingViewProps {
   name: string;
   avatar: AvatarConfig;
-  publicRooms: PublicRoomSummary[];
   initialJoinCode: string;
   errorMsg: string | null;
   connecting: boolean;
@@ -22,7 +21,6 @@ interface LandingViewProps {
 export function LandingView({
   name,
   avatar,
-  publicRooms,
   initialJoinCode,
   errorMsg,
   connecting,
@@ -32,7 +30,6 @@ export function LandingView({
   onJoinRoom,
 }: LandingViewProps) {
   const [joinCode, setJoinCode] = useState(initialJoinCode);
-  const [isPublicRoom, setIsPublicRoom] = useState(true);
 
   const handleJoinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,7 +40,7 @@ export function LandingView({
 
   return (
     <div className="min-h-screen bg-[#F4F2ED] text-zinc-900 flex flex-col">
-      {/* Top Bar Contract: 3 zones separated by gap-8 */}
+      {/* Top Bar */}
       <header className="w-full max-w-[1200px] mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-8 border-b border-[#E4E2DC]">
         <a
           href="/"
@@ -52,26 +49,11 @@ export function LandingView({
           DoodleGuess
         </a>
 
-        <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-zinc-600">
-          <a href="#play" className="hover:text-zinc-950 transition-colors whitespace-nowrap shrink-0">
-            Play Now
-          </a>
-          <a href="#public-rooms" className="hover:text-zinc-950 transition-colors whitespace-nowrap shrink-0">
-            Public Rooms
-          </a>
-          <a href="#mechanics" className="hover:text-zinc-950 transition-colors whitespace-nowrap shrink-0">
-            Hints & Scoring
-          </a>
-          <a href="#rules" className="hover:text-zinc-950 transition-colors whitespace-nowrap shrink-0">
-            Word Rules
-          </a>
-        </nav>
-
         <div className="flex items-center shrink-0">
           <button
             type="button"
             disabled={connecting}
-            onClick={() => onCreateRoom({ isPublic: isPublicRoom })}
+            onClick={() => onCreateRoom()}
             className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             Create Room
@@ -79,8 +61,8 @@ export function LandingView({
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-[1200px] mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-14">
-        {/* Hero Split */}
+      <main className="flex-1 w-full max-w-[1200px] mx-auto px-4 sm:px-6 py-8 sm:py-10 flex flex-col justify-center">
+        {/* Hero Section */}
         <section id="play" className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           {/* Left: Player Setup & Room Actions */}
           <div className="lg:col-span-6 bg-white rounded-2xl border border-[#E4E2DC] p-6 flex flex-col justify-between gap-6">
@@ -120,36 +102,15 @@ export function LandingView({
 
               {/* Create / Join Controls */}
               <div className="pt-3 border-t border-[#E4E2DC] space-y-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    disabled={connecting}
-                    onClick={() => onCreateRoom({ isPublic: isPublicRoom })}
-                    className="flex-1 min-w-[160px] inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    <span>{connecting ? 'Connecting...' : 'Create New Room'}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-
-                  <div className="flex items-center gap-1 p-1 rounded-xl bg-[#F4F2ED] border border-[#E4E2DC]">
-                    <button
-                      type="button"
-                      onClick={() => setIsPublicRoom(true)}
-                      className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${isPublicRoom ? 'bg-white text-zinc-950 shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
-                        }`}
-                    >
-                      Public
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsPublicRoom(false)}
-                      className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${!isPublicRoom ? 'bg-white text-zinc-950 shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
-                        }`}
-                    >
-                      Private
-                    </button>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  disabled={connecting}
+                  onClick={() => onCreateRoom()}
+                  className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <span>{connecting ? 'Connecting...' : 'Create New Room'}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
 
                 <form onSubmit={handleJoinSubmit} className="flex items-center gap-2">
                   <input
@@ -182,114 +143,6 @@ export function LandingView({
                 className="w-full h-full lg:h-full object-cover"
               />
             </div>
-          </div>
-        </section>
-
-        {/* Active Public Rooms */}
-        <section id="public-rooms" className="space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="font-display text-2xl font-bold text-zinc-950">Open Public Rooms</h2>
-              <p className="text-sm text-zinc-600">Jump straight into a live match with other players.</p>
-            </div>
-            <span className="font-mono-tabular text-xs font-semibold text-zinc-500">
-              {publicRooms.length} active
-            </span>
-          </div>
-
-          {publicRooms.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-[#E4E2DC] p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-zinc-900">No public rooms open right now</p>
-                <p className="text-xs text-zinc-500">
-                  Start a new public room and share the invite link or let others join from this board.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => onCreateRoom({ isPublic: true })}
-                className="px-4 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
-              >
-                Open Public Room
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {publicRooms.map((room) => (
-                <div
-                  key={room.code}
-                  className="bg-white rounded-2xl border border-[#E4E2DC] p-4 flex items-center justify-between gap-4"
-                >
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono-tabular text-sm font-bold text-zinc-950">
-                        {room.code}
-                      </span>
-                      <span className="text-xs text-zinc-400" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="text-xs font-medium text-zinc-600 truncate">
-                        Host: {room.hostName}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-zinc-500">
-                      <span className="inline-flex items-center gap-1 font-mono-tabular">
-                        <Users className="w-3.5 h-3.5" />
-                        {room.playerCount}/{room.maxPlayers}
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span>
-                        {room.phase === 'LOBBY'
-                          ? 'In Lobby'
-                          : `Round ${room.currentRound}/${room.totalRounds}`}
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={room.playerCount >= room.maxPlayers}
-                    onClick={() => onJoinRoom(room.code)}
-                    className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    {room.playerCount >= room.maxPlayers ? 'Full' : 'Join'}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* How It Works & Rules */}
-        <section id="mechanics" className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-2xl border border-[#E4E2DC] p-5 space-y-2">
-            <div className="w-9 h-9 rounded-xl bg-[#F4F2ED] flex items-center justify-center text-zinc-900">
-              <Palette className="w-5 h-5" />
-            </div>
-            <h3 className="font-display text-base font-bold text-zinc-900">Studio Canvas & Voice</h3>
-            <p className="text-sm text-zinc-600 leading-relaxed">
-              Pen, marker, spray airbrush, flood fill, filled shapes, alignment grid, live reactions, and optional WebRTC voice chat.
-            </p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-[#E4E2DC] p-5 space-y-2">
-            <div className="w-9 h-9 rounded-xl bg-[#F4F2ED] flex items-center justify-center text-amber-700">
-              <Lightbulb className="w-5 h-5" />
-            </div>
-            <h3 className="font-display text-base font-bold text-zinc-900">Timed Letter Hints</h3>
-            <p className="text-sm text-zinc-600 leading-relaxed">
-              As the round timer ticks down, letter hints unlock at scheduled intervals with a live countdown so tough words stay exciting.
-            </p>
-          </div>
-
-          <div id="rules" className="bg-white rounded-2xl border border-[#E4E2DC] p-5 space-y-2">
-            <div className="w-9 h-9 rounded-xl bg-[#F4F2ED] flex items-center justify-center text-emerald-700">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-            <h3 className="font-display text-base font-bold text-zinc-900">Smart Case-Free Matching</h3>
-            <p className="text-sm text-zinc-600 leading-relaxed">
-              Type answers in lowercase, UPPERCASE, or Mixed Case. Multi-word phrases like "cricket bat", "Cricket Bat", or "cricket-bat" all count cleanly.
-            </p>
           </div>
         </section>
       </main>

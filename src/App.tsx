@@ -87,7 +87,6 @@ export default function App() {
         errorMsg,
         startError,
         reactions,
-        publicRooms,
         createRoom,
         joinRoom,
         leaveRoom,
@@ -222,7 +221,6 @@ export default function App() {
       <LandingView
         name={name}
         avatar={avatar}
-        publicRooms={publicRooms}
         initialJoinCode={initialJoinCode.current}
         errorMsg={errorMsg}
         connecting={connecting}
