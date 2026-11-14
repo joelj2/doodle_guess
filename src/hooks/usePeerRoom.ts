@@ -28,21 +28,52 @@ import {
 } from '../server/gameEngine.ts';
 import type { ServerPlayer, ServerRoom } from '../server/gameEngine.ts';
 
-// ICE configuration with STUN and optional Metered TURN servers
+// Robust STUN & TURN servers for cross-platform (mobile, laptop, 4G/5G cellular, Wi-Fi, strict NATs)
 const user = process.env.NEXT_PUBLIC_TURN_USER;
 const pass = process.env.NEXT_PUBLIC_TURN_PASS;
-const ICE_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    ...(user && pass
-      ? [
-          'turn:global.relay.metered.ca:80',
-          'turn:global.relay.metered.ca:443',
-          'turns:global.relay.metered.ca:443?transport=tcp',
-        ].map((urls) => ({ urls, username: user, credential: pass }))
-      : []),
-  ],
+
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
+  // Fast global STUN servers
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  // OpenRelay by Metered - Free global TURN relay for symmetric NAT, CGNAT (mobile 4G/5G) and strict firewalls
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelay',
+    credential: 'openrelay',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelay',
+    credential: 'openrelay',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelay',
+    credential: 'openrelay',
+  },
+  {
+    urls: 'turns:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelay',
+    credential: 'openrelay',
+  },
+  ...(user && pass
+    ? [
+        'turn:global.relay.metered.ca:80',
+        'turn:global.relay.metered.ca:443',
+        'turns:global.relay.metered.ca:443?transport=tcp',
+      ].map((urls) => ({ urls, username: user, credential: pass }))
+    : []),
+];
+
+export const ICE_CONFIG: RTCConfiguration = {
+  iceServers: DEFAULT_ICE_SERVERS,
+  iceCandidatePoolSize: 10,
+  bundlePolicy: 'max-bundle',
 };
 
 const ROOM_CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -66,7 +97,9 @@ export type PeerMessageToHost =
   | { type: 'room:updateSettings'; settings: Partial<RoomSettings> }
   | { type: 'word:select'; word: string }
   | { type: 'game:playAgain' }
-  | { type: 'voice:state'; voiceJoined: boolean; voiceMuted: boolean; isSpeaking: boolean };
+  | { type: 'voice:state'; voiceJoined: boolean; voiceMuted: boolean; isSpeaking: boolean }
+  | { type: 'ping' }
+  | { type: 'pong' };
 
 export type PeerMessageToGuest =
   | { type: 'room:state'; state: RoomStateSync }
@@ -78,7 +111,9 @@ export type PeerMessageToGuest =
   | { type: 'guess:accepted'; word: string; points: number; hintPattern: string }
   | { type: 'canvas:reaction'; event: ReactionEvent }
   | { type: 'players:updated'; players: Player[] }
-  | { type: 'room:error'; error: string };
+  | { type: 'room:error'; error: string }
+  | { type: 'ping' }
+  | { type: 'pong' };
 
 export interface UsePeerRoomOptions {
   onRoundStart?: (round: number, drawerName: string, isMeDrawing: boolean) => void;
@@ -107,11 +142,49 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
   const hostConnsRef = useRef<Record<string, DataConnection>>({});
   const serverRoomRef = useRef<ServerRoom | null>(null);
   const gameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const prevPhaseRef = useRef<string | null>(null);
   const prevHintCountRef = useRef<number>(0);
   const optionsRef = useRef(options);
   optionsRef.current = options;
+
+  // Track profile and current room for mobile auto-reconnect
+  const lastJoinedCodeRef = useRef<string | null>(null);
+  const lastProfileRef = useRef<{ name: string; avatar: AvatarConfig }>({
+    name: '',
+    avatar: { color: '#2563EB', face: 'happy', accessory: 'none' },
+  });
+
+  // Mobile Screen Wake Lock: Keep phone screen on during live matches
+  useEffect(() => {
+    if (!roomState) return;
+    let wakeLockSentinel: any = null;
+
+    async function acquireWakeLock() {
+      try {
+        if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+          wakeLockSentinel = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch {
+        // ignore if wake lock not permitted
+      }
+    }
+
+    void acquireWakeLock();
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void acquireWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      wakeLockSentinel?.release().catch(() => {});
+    };
+  }, [roomState]);
 
   // Safe send helper
   const sendToGuest = useCallback((guestId: string, msg: PeerMessageToGuest) => {
@@ -198,6 +271,19 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
       const player = room.players.find((p) => p.id === senderId);
 
       switch (msg.type) {
+        case 'ping': {
+          sendToGuest(senderId, { type: 'pong' });
+          break;
+        }
+
+        case 'pong': {
+          if (player) {
+            player.lastSeen = Date.now();
+            player.connected = true;
+          }
+          break;
+        }
+
         case 'join': {
           if (room.players.length >= room.settings.maxPlayers) {
             sendToGuest(senderId, { type: 'room:error', error: 'Room is full.' });
@@ -226,6 +312,7 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
             pushSystemMessage(room, `${newPlayer.name} joined the room.`);
           } else {
             existing.connected = true;
+            existing.lastSeen = Date.now();
           }
           broadcastFullState();
           break;
@@ -430,23 +517,42 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
     [sendToGuest, broadcastToGuests, broadcastFullState]
   );
 
-  // Host handles guest drop
+  // Host handles guest drop (with 20s mobile reconnect grace period)
   const handleHostGuestDrop = useCallback(
     (guestId: string) => {
       const room = serverRoomRef.current;
       delete hostConnsRef.current[guestId];
       if (!room) return;
 
-      const { phaseChanged } = removePlayerFromRoom(room, guestId);
-      if (phaseChanged) {
-        broadcastFullState();
-      } else {
-        const publicPlayers = room.players.map(
-          ({ lastSeen: _ls, isHttp: _ih, ...rest }) => rest
-        );
-        broadcastToGuests({ type: 'players:updated', players: publicPlayers });
-        setRoomState((prev) => (prev ? { ...prev, players: publicPlayers } : prev));
+      const player = room.players.find((p) => p.id === guestId);
+      if (player) {
+        player.connected = false;
       }
+
+      // If mobile player temporarily dropped, give 20s grace period before kicking
+      setTimeout(() => {
+        const currentRoom = serverRoomRef.current;
+        if (!currentRoom) return;
+        const target = currentRoom.players.find((p) => p.id === guestId);
+        if (target && !target.connected) {
+          const { phaseChanged } = removePlayerFromRoom(currentRoom, guestId);
+          if (phaseChanged) {
+            broadcastFullState();
+          } else {
+            const publicPlayers = currentRoom.players.map(
+              ({ lastSeen: _ls, isHttp: _ih, ...rest }) => rest
+            );
+            broadcastToGuests({ type: 'players:updated', players: publicPlayers });
+            setRoomState((prev) => (prev ? { ...prev, players: publicPlayers } : prev));
+          }
+        }
+      }, 20000);
+
+      const publicPlayers = room.players.map(
+        ({ lastSeen: _ls, isHttp: _ih, ...rest }) => rest
+      );
+      broadcastToGuests({ type: 'players:updated', players: publicPlayers });
+      setRoomState((prev) => (prev ? { ...prev, players: publicPlayers } : prev));
     },
     [broadcastFullState, broadcastToGuests]
   );
@@ -454,6 +560,13 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
   // Guest handles message from host
   const handleGuestMessage = useCallback((msg: PeerMessageToGuest) => {
     switch (msg.type) {
+      case 'ping':
+        guestConnRef.current?.send({ type: 'pong' } satisfies PeerMessageToHost);
+        break;
+
+      case 'pong':
+        break;
+
       case 'room:state':
         setRoomState(msg.state);
         setConnecting(false);
@@ -487,8 +600,6 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
       case 'chat:message':
         if (msg.message.kind === 'close') {
           optionsRef.current.onCloseGuess?.();
-        } else if (msg.message.kind === 'correct') {
-          // another player guessed
         }
         setRoomState((prev) => {
           if (!prev) return prev;
@@ -598,7 +709,25 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
     };
   }, []);
 
-  // Heartbeat to announce public room if host
+  // Heartbeat to keep mobile cellular NAT ports open and announce public room if host
+  useEffect(() => {
+    if (!roomState) return;
+
+    if (pingTimerRef.current) clearInterval(pingTimerRef.current);
+    pingTimerRef.current = setInterval(() => {
+      if (isHost) {
+        broadcastToGuests({ type: 'ping' });
+      } else {
+        guestConnRef.current?.send({ type: 'ping' } satisfies PeerMessageToHost);
+      }
+    }, 5000);
+
+    return () => {
+      if (pingTimerRef.current) clearInterval(pingTimerRef.current);
+    };
+  }, [isHost, roomState, broadcastToGuests]);
+
+  // Host announcement for public rooms
   useEffect(() => {
     if (!isHost || !roomState || !roomState.settings.isPublic) return;
 
@@ -670,13 +799,17 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
       setConnecting(true);
       setErrorMsg(null);
       setStartError(null);
+      lastProfileRef.current = { name: name.trim(), avatar };
 
       try {
         const { Peer } = await import('peerjs');
         const code = generate4LetterCode();
         const peerId = 'doodle-' + code;
 
-        const peer = new Peer(peerId, { config: ICE_CONFIG });
+        const peer = new Peer(peerId, {
+          config: ICE_CONFIG,
+          debug: 1,
+        });
         peerRef.current = peer;
         setPeerInstance(peer);
 
@@ -693,12 +826,13 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
         peer.on('open', (id) => {
           setIsHost(true);
           setPlayerId(id);
+          lastJoinedCodeRef.current = code;
 
           const serverRoom = createRoomObject(id, name, avatar, settingsPartial);
           serverRoom.code = code;
           serverRoomRef.current = serverRoom;
 
-          // Listen for incoming guests
+          // Listen for incoming guests (mobile / laptop)
           peer.on('connection', (conn) => {
             conn.on('open', () => {
               hostConnsRef.current[conn.peer] = conn;
@@ -752,10 +886,15 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
       setConnecting(true);
       setErrorMsg(null);
       setStartError(null);
+      lastJoinedCodeRef.current = cleanCode;
+      lastProfileRef.current = { name: name.trim(), avatar };
 
       try {
         const { Peer } = await import('peerjs');
-        const peer = new Peer({ config: ICE_CONFIG });
+        const peer = new Peer({
+          config: ICE_CONFIG,
+          debug: 1,
+        });
         peerRef.current = peer;
         setPeerInstance(peer);
 
@@ -773,7 +912,10 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
           setPlayerId(id);
 
           const targetPeerId = 'doodle-' + cleanCode;
-          const conn = peer.connect(targetPeerId, { reliable: true });
+          const conn = peer.connect(targetPeerId, {
+            reliable: true,
+            serialization: 'json',
+          });
           guestConnRef.current = conn;
 
           const timeoutId = setTimeout(() => {
@@ -782,7 +924,7 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
               setErrorMsg('Connection to host timed out. Please check the room code.');
               conn.close();
             }
-          }, 8000);
+          }, 9000);
 
           conn.on('open', () => {
             clearTimeout(timeoutId);
@@ -805,9 +947,12 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
           conn.on('close', () => {
             clearTimeout(timeoutId);
             setConnecting(false);
-            setErrorMsg('Host closed the room or disconnected.');
-            setRoomState(null);
-            prevPhaseRef.current = null;
+            // If tab is visible and dropped, notify user
+            if (document.visibilityState === 'visible') {
+              setErrorMsg('Host closed the room or disconnected.');
+              setRoomState(null);
+              prevPhaseRef.current = null;
+            }
           });
 
           conn.on('error', () => {
@@ -824,11 +969,38 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
     [handleGuestMessage, roomState]
   );
 
+  // Auto-reconnect when switching back to tab on mobile
+  useEffect(() => {
+    if (isHost) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && lastJoinedCodeRef.current && !isHost) {
+        const conn = guestConnRef.current;
+        if (!conn || !conn.open) {
+          const code = lastJoinedCodeRef.current;
+          const { name, avatar } = lastProfileRef.current;
+          if (code && name) {
+            void joinRoom(code, name, avatar);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isHost, joinRoom]);
+
   // Leave room & teardown
   const leaveRoom = useCallback(() => {
+    lastJoinedCodeRef.current = null;
+
     if (gameTimerRef.current) {
       clearInterval(gameTimerRef.current);
       gameTimerRef.current = null;
+    }
+    if (pingTimerRef.current) {
+      clearInterval(pingTimerRef.current);
+      pingTimerRef.current = null;
     }
 
     if (guestConnRef.current) {
@@ -998,6 +1170,7 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
   useEffect(() => {
     return () => {
       if (gameTimerRef.current) clearInterval(gameTimerRef.current);
+      if (pingTimerRef.current) clearInterval(pingTimerRef.current);
       peerRef.current?.destroy();
     };
   }, []);

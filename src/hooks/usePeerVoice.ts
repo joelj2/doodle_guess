@@ -222,12 +222,19 @@ export function usePeerVoice(
     });
   }, [deafened]);
 
-  // VAD loop for speaking detection
+  // VAD loop for speaking detection & mobile audio unlock
   useEffect(() => {
-    const handlePointerDown = () => {
+    const unlockAudio = () => {
       audioCtxRef.current?.resume().catch(() => {});
+      Object.values(linksRef.current).forEach(({ audio }) => {
+        if (audio.paused && audio.srcObject) {
+          audio.play().catch(() => {});
+        }
+      });
     };
-    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('pointerdown', unlockAudio, { passive: true });
+    window.addEventListener('touchstart', unlockAudio, { passive: true });
+    window.addEventListener('click', unlockAudio, { passive: true });
 
     const buf = new Uint8Array(256);
     let prevSpeaking = false;
@@ -287,7 +294,9 @@ export function usePeerVoice(
     }, 180);
 
     return () => {
-      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+      window.removeEventListener('click', unlockAudio);
       clearInterval(vadTimer);
     };
   }, [onSpeakingChange]);
