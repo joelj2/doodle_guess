@@ -1,0 +1,6 @@
+{
+  "name": "DoodleGuess",
+  "description": "Real-time multiplayer drawing and guessing arena with progressive timed letter hints and smart answer matching.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
