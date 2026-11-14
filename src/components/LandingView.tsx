@@ -59,7 +59,12 @@ export function LandingView({
           <a href="#public-rooms" className="hover:text-zinc-950 transition-colors whitespace-nowrap shrink-0">
             Public Rooms
           </a>
-          
+          <a href="#mechanics" className="hover:text-zinc-950 transition-colors whitespace-nowrap shrink-0">
+            Hints & Scoring
+          </a>
+          <a href="#rules" className="hover:text-zinc-950 transition-colors whitespace-nowrap shrink-0">
+            Word Rules
+          </a>
         </nav>
 
         <div className="flex items-center shrink-0">
@@ -255,6 +260,39 @@ export function LandingView({
               ))}
             </div>
           )}
+        </section>
+
+        {/* How It Works & Rules */}
+        <section id="mechanics" className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white rounded-2xl border border-[#E4E2DC] p-5 space-y-2">
+            <div className="w-9 h-9 rounded-xl bg-[#F4F2ED] flex items-center justify-center text-zinc-900">
+              <Palette className="w-5 h-5" />
+            </div>
+            <h3 className="font-display text-base font-bold text-zinc-900">Studio Canvas & Voice</h3>
+            <p className="text-sm text-zinc-600 leading-relaxed">
+              Pen, marker, spray airbrush, flood fill, filled shapes, alignment grid, live reactions, and optional WebRTC voice chat.
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-[#E4E2DC] p-5 space-y-2">
+            <div className="w-9 h-9 rounded-xl bg-[#F4F2ED] flex items-center justify-center text-amber-700">
+              <Lightbulb className="w-5 h-5" />
+            </div>
+            <h3 className="font-display text-base font-bold text-zinc-900">Timed Letter Hints</h3>
+            <p className="text-sm text-zinc-600 leading-relaxed">
+              As the round timer ticks down, letter hints unlock at scheduled intervals with a live countdown so tough words stay exciting.
+            </p>
+          </div>
+
+          <div id="rules" className="bg-white rounded-2xl border border-[#E4E2DC] p-5 space-y-2">
+            <div className="w-9 h-9 rounded-xl bg-[#F4F2ED] flex items-center justify-center text-emerald-700">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <h3 className="font-display text-base font-bold text-zinc-900">Smart Case-Free Matching</h3>
+            <p className="text-sm text-zinc-600 leading-relaxed">
+              Type answers in lowercase, UPPERCASE, or Mixed Case. Multi-word phrases like "cricket bat", "Cricket Bat", or "cricket-bat" all count cleanly.
+            </p>
+          </div>
         </section>
       </main>
     </div>

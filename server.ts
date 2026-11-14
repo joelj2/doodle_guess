@@ -5,221 +5,42 @@ import { Server } from 'socket.io';
 import type { Socket } from 'socket.io';
 import type {
   AvatarConfig,
-  ChatMessage,
   DrawAction,
-  GamePhase,
-  Player,
-  PublicRoomSummary,
   RoomSettings,
-  RoomStateSync,
-  RoundPlayerResult,
-  RoundSummary,
-  WordOption,
 } from './src/shared/types.ts';
+import { buildHintPattern } from './src/shared/words.ts';
 import {
-  WORD_BANK,
-  buildHintPattern,
-  getRevealableIndices,
-  isCloseGuess,
-  isExactWordMatch,
-} from './src/shared/words.ts';
+  advanceRoomClock,
+  beginWordChoiceOnRoom,
+  buildStateForPlayer,
+  computeTimeLeft,
+  createRoomObject,
+  defaultAvatar,
+  deleteRoom,
+  getInMemoryRoomsMap,
+  getNextHintIn,
+  getPublicRoomsList,
+  getRoom,
+  makeId,
+  markSocketServerActive,
+  processGuessOrChat,
+  pushSystemMessage,
+  removePlayerFromRoom,
+  sanitizeName,
+  sanitizeSettings,
+  saveRoom,
+  startDrawingPhaseOnRoom,
+} from './src/server/gameEngine.ts';
+import type { ServerRoom } from './src/server/gameEngine.ts';
 
 const PORT = Number(process.env.PORT) || 3000;
-const WORD_CHOICE_SECONDS = 15;
-const ROUND_END_SECONDS = 6;
-
-interface ServerRoom {
-  code: string;
-  settings: RoomSettings;
-  phase: GamePhase;
-  players: Player[];
-  currentRound: number;
-  drawerOrder: string[];
-  drawerQueueIdx: number;
-  drawerId: string | null;
-  secretWord: string | null;
-  wordOptions: WordOption[];
-  usedWords: Set<string>;
-  timeLeft: number;
-  totalTime: number;
-  revealedIndices: number[];
-  hintTriggers: number[];
-  strokes: DrawAction[];
-  redoStack: DrawAction[];
-  messages: ChatMessage[];
-  roundSummary: RoundSummary | null;
-  guessTimes: Map<string, number>;
-  timerHandle: ReturnType<typeof setInterval> | null;
-  cleanupTimeout: ReturnType<typeof setTimeout> | null;
-}
-
-const rooms = new Map<string, ServerRoom>();
 const socketRoomMap = new Map<string, string>();
-
-function makeId(prefix = 'id'): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
-}
-
-function generateRoomCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  do {
-    code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  } while (rooms.has(code));
-  return code;
-}
-
-function sanitizeName(name: string): string {
-  const cleaned = name.trim().replace(/\s+/g, ' ').slice(0, 18);
-  return cleaned || `Artist${Math.floor(100 + Math.random() * 899)}`;
-}
-
-function defaultAvatar(): AvatarConfig {
-  return {
-    color: '#2563EB',
-    face: 'happy',
-    accessory: 'none',
-  };
-}
-
-function sanitizeSettings(partial?: Partial<RoomSettings>): RoomSettings {
-  const rounds = Math.min(8, Math.max(1, Number(partial?.rounds) || 3));
-  const drawTime = Math.min(180, Math.max(30, Number(partial?.drawTime) || 80));
-  const maxPlayers = Math.min(12, Math.max(2, Number(partial?.maxPlayers) || 8));
-  const hintCount = Math.min(5, Math.max(0, partial?.hintCount ?? 3));
-  const wordMode =
-    partial?.wordMode === 'custom' || partial?.wordMode === 'mixed' || partial?.wordMode === 'standard'
-      ? partial.wordMode
-      : 'standard';
-  const customWords = Array.isArray(partial?.customWords)
-    ? partial.customWords
-        .map((w) => String(w).trim().replace(/\s+/g, ' '))
-        .filter((w) => w.length >= 2 && w.length <= 36)
-        .slice(0, 100)
-    : [];
-  const isPublic = typeof partial?.isPublic === 'boolean' ? partial.isPublic : true;
-
-  return {
-    rounds,
-    drawTime,
-    maxPlayers,
-    hintCount,
-    wordMode,
-    customWords,
-    isPublic,
-  };
-}
-
-function computeHintTriggers(drawTime: number, hintCount: number, word: string): number[] {
-  if (hintCount <= 0) return [];
-  const revealable = getRevealableIndices(word);
-  // Keep at least ~45% of letters unrevealed so guessing remains fun
-  const maxToReveal = Math.min(hintCount, Math.max(1, Math.floor(revealable.length * 0.55)));
-  const triggers: number[] = [];
-  for (let i = 1; i <= maxToReveal; i++) {
-    const elapsedFraction = i / (maxToReveal + 1.15);
-    const triggerAtLeft = Math.max(5, Math.round(drawTime * (1 - elapsedFraction)));
-    if (!triggers.includes(triggerAtLeft)) {
-      triggers.push(triggerAtLeft);
-    }
-  }
-  return triggers.sort((a, b) => b - a);
-}
-
-function getNextHintIn(room: ServerRoom): number | null {
-  if (room.phase !== 'DRAWING') return null;
-  const upcoming = room.hintTriggers.find((t) => t < room.timeLeft);
-  if (upcoming === undefined) return null;
-  return Math.max(1, room.timeLeft - upcoming);
-}
-
-function buildStateForPlayer(room: ServerRoom, playerId: string): RoomStateSync {
-  const player = room.players.find((p) => p.id === playerId);
-  const isDrawer = room.drawerId === playerId;
-  const canSeeWord =
-    isDrawer ||
-    Boolean(player?.hasGuessed) ||
-    room.phase === 'ROUND_END' ||
-    room.phase === 'GAME_OVER';
-
-  const hintPattern = room.secretWord
-    ? canSeeWord
-      ? room.secretWord.toUpperCase()
-      : buildHintPattern(room.secretWord, room.revealedIndices)
-    : '';
-
-  const drawer = room.players.find((p) => p.id === room.drawerId);
-
-  return {
-    code: room.code,
-    settings: room.settings,
-    phase: room.phase,
-    players: room.players,
-    currentRound: room.currentRound,
-    totalRounds: room.settings.rounds,
-    drawerId: room.drawerId,
-    drawerName: drawer?.name ?? null,
-    timeLeft: room.timeLeft,
-    totalTime: room.totalTime,
-    hintPattern,
-    revealedIndices: room.revealedIndices,
-    nextHintIn: getNextHintIn(room),
-    wordOptions: isDrawer && room.phase === 'CHOOSING_WORD' ? room.wordOptions : null,
-    secretWord: canSeeWord ? room.secretWord : null,
-    strokes: room.strokes,
-    messages: room.messages.slice(-80),
-    roundSummary: room.roundSummary,
-    canUndo: room.strokes.length > 0,
-    canRedo: room.redoStack.length > 0,
-  };
-}
-
-function getPublicRoomsList(): PublicRoomSummary[] {
-  const list: PublicRoomSummary[] = [];
-  for (const room of rooms.values()) {
-    if (!room.settings.isPublic) continue;
-    const connectedCount = room.players.filter((p) => p.connected).length;
-    if (connectedCount === 0) continue;
-    const host = room.players.find((p) => p.isHost) ?? room.players[0];
-    list.push({
-      code: room.code,
-      hostName: host?.name ?? 'Host',
-      playerCount: connectedCount,
-      maxPlayers: room.settings.maxPlayers,
-      phase: room.phase,
-      currentRound: room.currentRound,
-      totalRounds: room.settings.rounds,
-    });
-  }
-  return list.sort((a, b) => b.playerCount - a.playerCount);
-}
-
-function pickWordOptions(room: ServerRoom): WordOption[] {
-  const customPool: WordOption[] = room.settings.customWords.map((w) => ({
-    word: w,
-    category: 'Custom',
-  }));
-
-  let pool: WordOption[] = [];
-  if (room.settings.wordMode === 'custom' && customPool.length >= 3) {
-    pool = customPool;
-  } else if (room.settings.wordMode === 'mixed' && customPool.length > 0) {
-    pool = [...customPool, ...WORD_BANK];
-  } else {
-    pool = WORD_BANK;
-  }
-
-  let available = pool.filter((item) => !room.usedWords.has(item.word.toLowerCase()));
-  if (available.length < 3) {
-    room.usedWords.clear();
-    available = [...pool];
-  }
-
-  const shuffled = [...available].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, 3);
-}
+const roomTimers = new Map<string, ReturnType<typeof setInterval>>();
+const cleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 async function startServer() {
+  markSocketServerActive();
+
   const app = express();
   const httpServer = createServer(app);
 
@@ -229,408 +50,168 @@ async function startServer() {
     pingInterval: 10000,
   });
 
-  app.use(express.json());
-
-  app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, rooms: rooms.size });
-  });
-
-  app.get('/api/rooms', (_req, res) => {
-    res.json({ rooms: getPublicRoomsList() });
-  });
-
-  function broadcastPublicRooms() {
-    io.emit('rooms:updated', getPublicRoomsList());
-  }
-
-  function pushSystemMessage(room: ServerRoom, text: string, kind: ChatMessage['kind'] = 'system') {
-    const msg: ChatMessage = {
-      id: makeId('msg'),
-      text,
-      kind,
-      timestamp: Date.now(),
-    };
-    room.messages.push(msg);
-    if (room.messages.length > 120) {
-      room.messages = room.messages.slice(-100);
-    }
-    io.to(room.code).emit('chat:message', msg);
+  async function broadcastPublicRooms() {
+    io.emit('rooms:updated', await getPublicRoomsList());
   }
 
   function syncRoomToAll(room: ServerRoom) {
+    const now = Date.now();
     for (const player of room.players) {
-      if (!player.connected) continue;
-      io.to(player.id).emit('room:state', buildStateForPlayer(room, player.id));
+      if (!player.connected || player.isHttp) continue;
+      io.to(player.id).emit('room:state', buildStateForPlayer(room, player.id, now));
     }
   }
 
-  function clearRoomTimer(room: ServerRoom) {
-    if (room.timerHandle) {
-      clearInterval(room.timerHandle);
-      room.timerHandle = null;
+  function stopRoomLoop(code: string) {
+    const handle = roomTimers.get(code);
+    if (handle) {
+      clearInterval(handle);
+      roomTimers.delete(code);
     }
   }
 
-  function beginWordChoice(room: ServerRoom) {
-    clearRoomTimer(room);
+  function ensureRoomLoop(room: ServerRoom) {
+    if (roomTimers.has(room.code)) return;
 
-    const connectedPlayers = room.players.filter((p) => p.connected);
-    if (connectedPlayers.length < 2) {
-      room.phase = 'LOBBY';
-      room.drawerId = null;
-      room.secretWord = null;
-      room.strokes = [];
-      room.redoStack = [];
-      pushSystemMessage(room, 'Returned to lobby — waiting for at least 2 players.');
-      syncRoomToAll(room);
-      broadcastPublicRooms();
-      return;
-    }
-
-    // Advance drawer queue
-    while (room.drawerQueueIdx < room.drawerOrder.length) {
-      const candidateId = room.drawerOrder[room.drawerQueueIdx];
-      const candidate = room.players.find((p) => p.id === candidateId && p.connected);
-      if (candidate) {
-        room.drawerId = candidate.id;
-        break;
-      }
-      room.drawerQueueIdx++;
-    }
-
-    if (room.drawerQueueIdx >= room.drawerOrder.length) {
-      // Round complete, check if more rounds remain
-      if (room.currentRound >= room.settings.rounds) {
-        finishGame(room);
+    const handle = setInterval(async () => {
+      const current = getInMemoryRoomsMap().get(room.code);
+      if (!current || current.phase === 'LOBBY' || current.phase === 'GAME_OVER') {
+        stopRoomLoop(room.code);
         return;
       }
-      room.currentRound += 1;
-      room.drawerOrder = connectedPlayers.map((p) => p.id);
-      room.drawerQueueIdx = 0;
-      room.drawerId = room.drawerOrder[0];
-    }
 
-    for (const p of room.players) {
-      p.isDrawing = p.id === room.drawerId;
-      p.hasGuessed = false;
-      p.guessOrder = null;
-      p.roundScore = 0;
-    }
+      const now = Date.now();
+      const { revealedHint, phaseChanged } = advanceRoomClock(current, now);
 
-    room.phase = 'CHOOSING_WORD';
-    room.secretWord = null;
-    room.wordOptions = pickWordOptions(room);
-    room.revealedIndices = [];
-    room.hintTriggers = [];
-    room.strokes = [];
-    room.redoStack = [];
-    room.roundSummary = null;
-    room.guessTimes.clear();
-    room.timeLeft = WORD_CHOICE_SECONDS;
-    room.totalTime = WORD_CHOICE_SECONDS;
-
-    const drawer = room.players.find((p) => p.id === room.drawerId);
-    pushSystemMessage(room, `${drawer?.name ?? 'Player'} is choosing a word...`);
-    syncRoomToAll(room);
-    broadcastPublicRooms();
-
-    room.timerHandle = setInterval(() => {
-      if (room.phase !== 'CHOOSING_WORD') return;
-      room.timeLeft -= 1;
-      io.to(room.code).emit('timer:tick', {
-        timeLeft: room.timeLeft,
-        nextHintIn: null,
-      });
-
-      if (room.timeLeft <= 0) {
-        const autoChoice = room.wordOptions[0]?.word ?? 'cricket bat';
-        startDrawingPhase(room, autoChoice);
-      }
-    }, 1000);
-  }
-
-  function startDrawingPhase(room: ServerRoom, chosenWord: string) {
-    clearRoomTimer(room);
-    room.phase = 'DRAWING';
-    room.secretWord = chosenWord;
-    room.usedWords.add(chosenWord.toLowerCase());
-    room.wordOptions = [];
-    room.revealedIndices = [];
-    room.timeLeft = room.settings.drawTime;
-    room.totalTime = room.settings.drawTime;
-    room.hintTriggers = computeHintTriggers(room.settings.drawTime, room.settings.hintCount, chosenWord);
-
-    const drawer = room.players.find((p) => p.id === room.drawerId);
-    pushSystemMessage(room, `${drawer?.name ?? 'Artist'} started drawing! Start guessing.`);
-    syncRoomToAll(room);
-
-    room.timerHandle = setInterval(() => {
-      if (room.phase !== 'DRAWING' || !room.secretWord) return;
-      room.timeLeft -= 1;
-
-      // Check if a timed letter hint triggers at this exact second
-      if (room.hintTriggers.includes(room.timeLeft)) {
-        const revealable = getRevealableIndices(room.secretWord);
-        const unrevealed = revealable.filter((idx) => !room.revealedIndices.includes(idx));
-        if (unrevealed.length > 1) {
-          const picked = unrevealed[Math.floor(Math.random() * unrevealed.length)];
-          room.revealedIndices.push(picked);
-          const nextHintIn = getNextHintIn(room);
-          const guesserPattern = buildHintPattern(room.secretWord, room.revealedIndices);
-
-          for (const p of room.players) {
-            if (!p.connected) continue;
-            const seesWord = p.id === room.drawerId || p.hasGuessed;
-            io.to(p.id).emit('hint:revealed', {
-              hintPattern: seesWord ? room.secretWord.toUpperCase() : guesserPattern,
-              revealedIndices: room.revealedIndices,
-              nextHintIn,
-            });
-          }
-
-          pushSystemMessage(room, `Letter hint revealed!`, 'hint');
+      if (revealedHint && current.secretWord) {
+        const nextHintIn = getNextHintIn(current, now);
+        const guesserPattern = buildHintPattern(current.secretWord, current.revealedIndices);
+        for (const p of current.players) {
+          if (!p.connected || p.isHttp) continue;
+          const seesWord = p.id === current.drawerId || p.hasGuessed;
+          io.to(p.id).emit('hint:revealed', {
+            hintPattern: seesWord ? current.secretWord.toUpperCase() : guesserPattern,
+            revealedIndices: current.revealedIndices,
+            nextHintIn,
+          });
+        }
+        const lastMsg = current.messages[current.messages.length - 1];
+        if (lastMsg?.kind === 'hint') {
+          io.to(current.code).emit('chat:message', lastMsg);
         }
       }
 
-      io.to(room.code).emit('timer:tick', {
-        timeLeft: room.timeLeft,
-        nextHintIn: getNextHintIn(room),
-      });
-
-      if (room.timeLeft <= 0) {
-        endRound(room, 'time_up');
+      if (phaseChanged) {
+        syncRoomToAll(current);
+        await broadcastPublicRooms();
+        const afterPhase: string = current.phase;
+        if (afterPhase === 'LOBBY' || afterPhase === 'GAME_OVER') {
+          stopRoomLoop(current.code);
+        }
+      } else {
+        io.to(current.code).emit('timer:tick', {
+          timeLeft: computeTimeLeft(current, now),
+          nextHintIn: getNextHintIn(current, now),
+        });
       }
     }, 1000);
+
+    roomTimers.set(room.code, handle);
   }
 
-  function endRound(room: ServerRoom, reason: RoundSummary['reason']) {
-    clearRoomTimer(room);
-    if (room.phase !== 'DRAWING') return;
-
-    const word = room.secretWord ?? '';
-    const drawer = room.players.find((p) => p.id === room.drawerId);
-
-    if (reason === 'all_guessed' && drawer) {
-      drawer.roundScore += 40;
-      drawer.score += 40;
-    }
-
-    const results: RoundPlayerResult[] = room.players
-      .filter((p) => p.connected)
-      .map((p) => ({
-        playerId: p.id,
-        playerName: p.name,
-        pointsEarned: p.roundScore,
-        totalScore: p.score,
-        guessedInSeconds: room.guessTimes.get(p.id) ?? null,
-      }))
-      .sort((a, b) => b.pointsEarned - a.pointsEarned);
-
-    room.phase = 'ROUND_END';
-    room.timeLeft = ROUND_END_SECONDS;
-    room.totalTime = ROUND_END_SECONDS;
-    room.roundSummary = {
-      word,
-      drawerName: drawer?.name ?? 'Artist',
-      reason,
-      results,
-    };
-
-    const reasonLabel =
-      reason === 'all_guessed'
-        ? 'Everyone guessed the word!'
-        : reason === 'drawer_left'
-          ? 'Drawer disconnected.'
-          : "Time's up!";
-    pushSystemMessage(room, `${reasonLabel} The word was "${word}".`);
-    syncRoomToAll(room);
-
-    room.timerHandle = setInterval(() => {
-      if (room.phase !== 'ROUND_END') return;
-      room.timeLeft -= 1;
-      io.to(room.code).emit('timer:tick', {
-        timeLeft: room.timeLeft,
-        nextHintIn: null,
-      });
-
-      if (room.timeLeft <= 0) {
-        room.drawerQueueIdx += 1;
-        beginWordChoice(room);
-      }
-    }, 1000);
-  }
-
-  function finishGame(room: ServerRoom) {
-    clearRoomTimer(room);
-    room.phase = 'GAME_OVER';
-    room.drawerId = null;
-    room.secretWord = null;
-    room.timeLeft = 0;
-    room.totalTime = 0;
-    for (const p of room.players) {
-      p.isDrawing = false;
-      p.hasGuessed = false;
-    }
-    pushSystemMessage(room, 'Match finished! Check out the final podium.');
-    syncRoomToAll(room);
-    broadcastPublicRooms();
-  }
-
-  function handlePlayerLeave(socketId: string) {
+  async function handlePlayerLeave(socketId: string) {
     const code = socketRoomMap.get(socketId);
     if (!code) return;
     socketRoomMap.delete(socketId);
 
-    const room = rooms.get(code);
+    const room = await getRoom(code);
     if (!room) return;
 
     const player = room.players.find((p) => p.id === socketId);
-    if (!player) return;
+    const wasVoice = Boolean(player?.voiceJoined);
 
-    const wasHost = player.isHost;
-    const wasDrawer = room.drawerId === socketId;
+    const { empty, phaseChanged } = removePlayerFromRoom(room, socketId);
 
-    room.players = room.players.filter((p) => p.id !== socketId);
-
-    const connectedRemaining = room.players.filter((p) => p.connected);
-    if (connectedRemaining.length === 0) {
-      clearRoomTimer(room);
-      room.cleanupTimeout = setTimeout(() => {
-        const current = rooms.get(code);
-        if (current && current.players.filter((p) => p.connected).length === 0) {
-          clearRoomTimer(current);
-          rooms.delete(code);
-          broadcastPublicRooms();
-        }
-      }, 15000);
-      broadcastPublicRooms();
-      return;
-    }
-
-    if (wasHost) {
-      connectedRemaining[0].isHost = true;
-      pushSystemMessage(room, `${connectedRemaining[0].name} is now the room host.`);
-    }
-
-    if (player.voiceJoined) {
+    if (wasVoice) {
       io.to(room.code).emit('voice:peerLeft', { peerId: socketId });
     }
 
-    pushSystemMessage(room, `${player.name} left the room.`);
-
-    if (room.phase === 'DRAWING' && wasDrawer) {
-      endRound(room, 'drawer_left');
-    } else if (room.phase === 'CHOOSING_WORD' && wasDrawer) {
-      room.drawerQueueIdx += 1;
-      beginWordChoice(room);
-    } else if (room.phase === 'DRAWING') {
-      const nonDrawers = connectedRemaining.filter((p) => p.id !== room.drawerId);
-      if (nonDrawers.length > 0 && nonDrawers.every((p) => p.hasGuessed)) {
-        endRound(room, 'all_guessed');
-      } else {
-        syncRoomToAll(room);
-      }
-    } else {
-      syncRoomToAll(room);
+    if (empty) {
+      stopRoomLoop(room.code);
+      const t = setTimeout(async () => {
+        const current = await getRoom(code);
+        if (current && current.players.filter((p) => p.connected).length === 0) {
+          stopRoomLoop(code);
+          await deleteRoom(code);
+          await broadcastPublicRooms();
+        }
+      }, 15000);
+      cleanupTimers.set(code, t);
+      await broadcastPublicRooms();
+      return;
     }
 
-    broadcastPublicRooms();
+    if (phaseChanged) {
+      ensureRoomLoop(room);
+    }
+    syncRoomToAll(room);
+    await saveRoom(room);
+    await broadcastPublicRooms();
   }
 
-  io.on('connection', (socket: Socket) => {
-    socket.emit('rooms:updated', getPublicRoomsList());
+  io.on('connection', async (socket: Socket) => {
+    socket.emit('rooms:updated', await getPublicRoomsList());
 
     socket.on(
       'room:create',
-      (
+      async (
         payload: { name: string; avatar?: AvatarConfig; settings?: Partial<RoomSettings> },
         ack?: (res: { ok: boolean; code?: string; error?: string }) => void
       ) => {
-        // Leave any previous room cleanly
         if (socketRoomMap.has(socket.id)) {
-          handlePlayerLeave(socket.id);
-          socket.leave(socketRoomMap.get(socket.id) ?? '');
+          const prev = socketRoomMap.get(socket.id) ?? '';
+          await handlePlayerLeave(socket.id);
+          socket.leave(prev);
         }
 
-        const code = generateRoomCode();
-        const settings = sanitizeSettings(payload?.settings);
-        const player: Player = {
-          id: socket.id,
-          name: sanitizeName(payload?.name ?? ''),
-          avatar: payload?.avatar ?? defaultAvatar(),
-          score: 0,
-          roundScore: 0,
-          hasGuessed: false,
-          guessOrder: null,
-          isDrawing: false,
-          isHost: true,
-          connected: true,
-          voiceJoined: false,
-          voiceMuted: false,
-          isSpeaking: false,
-        };
+        const room = createRoomObject(
+          socket.id,
+          payload?.name ?? '',
+          payload?.avatar,
+          payload?.settings,
+          false
+        );
 
-        const room: ServerRoom = {
-          code,
-          settings,
-          phase: 'LOBBY',
-          players: [player],
-          currentRound: 0,
-          drawerOrder: [],
-          drawerQueueIdx: 0,
-          drawerId: null,
-          secretWord: null,
-          wordOptions: [],
-          usedWords: new Set(),
-          timeLeft: 0,
-          totalTime: 0,
-          revealedIndices: [],
-          hintTriggers: [],
-          strokes: [],
-          redoStack: [],
-          messages: [
-            {
-              id: makeId('msg'),
-              text: `Room ${code} created! Share the code or invite link with friends.`,
-              kind: 'system',
-              timestamp: Date.now(),
-            },
-          ],
-          roundSummary: null,
-          guessTimes: new Map(),
-          timerHandle: null,
-          cleanupTimeout: null,
-        };
-
-        rooms.set(code, room);
-        socketRoomMap.set(socket.id, code);
-        socket.join(code);
+        await saveRoom(room);
+        socketRoomMap.set(socket.id, room.code);
+        socket.join(room.code);
 
         socket.emit('room:state', buildStateForPlayer(room, socket.id));
-        broadcastPublicRooms();
-        ack?.({ ok: true, code });
+        await broadcastPublicRooms();
+        ack?.({ ok: true, code: room.code });
       }
     );
 
     socket.on(
       'room:join',
-      (
+      async (
         payload: { code: string; name: string; avatar?: AvatarConfig },
         ack?: (res: { ok: boolean; code?: string; error?: string }) => void
       ) => {
         const code = String(payload?.code ?? '')
           .trim()
           .toUpperCase();
-        const room = rooms.get(code);
+        const room = await getRoom(code);
 
         if (!room) {
           ack?.({ ok: false, error: `Room "${code}" not found.` });
           return;
         }
 
-        if (room.cleanupTimeout) {
-          clearTimeout(room.cleanupTimeout);
-          room.cleanupTimeout = null;
+        const pendingCleanup = cleanupTimers.get(code);
+        if (pendingCleanup) {
+          clearTimeout(pendingCleanup);
+          cleanupTimers.delete(code);
         }
 
         if (room.players.length >= room.settings.maxPlayers) {
@@ -645,13 +226,16 @@ async function startServer() {
             ack?.({ ok: true, code });
             return;
           }
-          handlePlayerLeave(socket.id);
+          await handlePlayerLeave(socket.id);
         }
 
         const isFirst = room.players.length === 0;
-        const player: Player = {
+        const playerName = sanitizeName(payload?.name ?? '');
+        const now = Date.now();
+
+        room.players.push({
           id: socket.id,
-          name: sanitizeName(payload?.name ?? ''),
+          name: playerName,
           avatar: payload?.avatar ?? defaultAvatar(),
           score: 0,
           roundScore: 0,
@@ -663,44 +247,47 @@ async function startServer() {
           voiceJoined: false,
           voiceMuted: false,
           isSpeaking: false,
-        };
+          lastSeen: now,
+          isHttp: false,
+        });
 
-        room.players.push(player);
         socketRoomMap.set(socket.id, code);
         socket.join(code);
 
-        pushSystemMessage(room, `${player.name} joined the room!`);
+        pushSystemMessage(room, `${playerName} joined the room!`);
+        await saveRoom(room);
         syncRoomToAll(room);
-        broadcastPublicRooms();
+        await broadcastPublicRooms();
         ack?.({ ok: true, code });
       }
     );
 
-    socket.on('room:leave', () => {
+    socket.on('room:leave', async () => {
       const code = socketRoomMap.get(socket.id);
       if (code) {
         socket.leave(code);
-        handlePlayerLeave(socket.id);
+        await handlePlayerLeave(socket.id);
       }
     });
 
-    socket.on('room:updateSettings', (partial: Partial<RoomSettings>) => {
+    socket.on('room:updateSettings', async (partial: Partial<RoomSettings>) => {
       const code = socketRoomMap.get(socket.id);
       if (!code) return;
-      const room = rooms.get(code);
+      const room = await getRoom(code);
       if (!room) return;
       const player = room.players.find((p) => p.id === socket.id);
       if (!player?.isHost || room.phase !== 'LOBBY') return;
 
       room.settings = sanitizeSettings({ ...room.settings, ...partial });
+      await saveRoom(room);
       syncRoomToAll(room);
-      broadcastPublicRooms();
+      await broadcastPublicRooms();
     });
 
-    socket.on('game:start', (ack?: (res: { ok: boolean; error?: string }) => void) => {
+    socket.on('game:start', async (ack?: (res: { ok: boolean; error?: string }) => void) => {
       const code = socketRoomMap.get(socket.id);
       if (!code) return;
-      const room = rooms.get(code);
+      const room = await getRoom(code);
       if (!room) return;
       const player = room.players.find((p) => p.id === socket.id);
       if (!player?.isHost) {
@@ -722,26 +309,30 @@ async function startServer() {
       }
 
       room.currentRound = 1;
-      room.usedWords.clear();
+      room.usedWords = [];
       room.drawerOrder = connectedPlayers.map((p) => p.id);
       room.drawerQueueIdx = 0;
       room.strokes = [];
       room.redoStack = [];
       room.roundSummary = null;
 
-      beginWordChoice(room);
+      beginWordChoiceOnRoom(room);
+      await saveRoom(room);
+      ensureRoomLoop(room);
+      syncRoomToAll(room);
+      await broadcastPublicRooms();
       ack?.({ ok: true });
     });
 
-    socket.on('game:playAgain', () => {
+    socket.on('game:playAgain', async () => {
       const code = socketRoomMap.get(socket.id);
       if (!code) return;
-      const room = rooms.get(code);
+      const room = await getRoom(code);
       if (!room) return;
       const player = room.players.find((p) => p.id === socket.id);
       if (!player?.isHost) return;
 
-      clearRoomTimer(room);
+      stopRoomLoop(room.code);
       for (const p of room.players) {
         p.score = 0;
         p.roundScore = 0;
@@ -753,34 +344,39 @@ async function startServer() {
       room.currentRound = 0;
       room.drawerId = null;
       room.secretWord = null;
+      room.phaseEndsAt = 0;
+      room.totalTime = 0;
       room.strokes = [];
       room.redoStack = [];
       room.roundSummary = null;
       pushSystemMessage(room, 'Room reset to lobby for a rematch!');
+      await saveRoom(room);
       syncRoomToAll(room);
-      broadcastPublicRooms();
+      await broadcastPublicRooms();
     });
 
-    socket.on('word:select', (word: string) => {
+    socket.on('word:select', async (word: string) => {
       const code = socketRoomMap.get(socket.id);
       if (!code) return;
-      const room = rooms.get(code);
+      const room = await getRoom(code);
       if (!room || room.phase !== 'CHOOSING_WORD' || room.drawerId !== socket.id) return;
 
       const validOption = room.wordOptions.find((o) => o.word === word);
       const chosen = validOption ? validOption.word : room.wordOptions[0]?.word;
       if (chosen) {
-        startDrawingPhase(room, chosen);
+        startDrawingPhaseOnRoom(room, chosen);
+        await saveRoom(room);
+        ensureRoomLoop(room);
+        syncRoomToAll(room);
       }
     });
 
-    socket.on('draw:action', (action: DrawAction) => {
+    socket.on('draw:action', async (action: DrawAction) => {
       const code = socketRoomMap.get(socket.id);
       if (!code) return;
-      const room = rooms.get(code);
+      const room = await getRoom(code);
       if (!room) return;
 
-      // Allow drawing by active drawer during DRAWING, or by anyone in LOBBY warmup sketchpad
       const canDraw =
         (room.phase === 'DRAWING' && room.drawerId === socket.id) || room.phase === 'LOBBY';
       if (!canDraw) return;
@@ -788,6 +384,7 @@ async function startServer() {
       if (action.type === 'clear') {
         room.strokes = [];
         room.redoStack = [];
+        await saveRoom(room);
         io.to(room.code).emit('canvas:sync', {
           strokes: room.strokes,
           canUndo: false,
@@ -796,11 +393,11 @@ async function startServer() {
         return;
       }
 
-      // Idempotency guard against duplicate action IDs
       if (room.strokes.some((s) => s.id === action.id)) return;
 
       room.strokes.push(action);
       room.redoStack = [];
+      await saveRoom(room);
       socket.to(room.code).emit('draw:action', action);
       io.to(room.code).emit('canvas:historyState', {
         canUndo: room.strokes.length > 0,
@@ -808,10 +405,10 @@ async function startServer() {
       });
     });
 
-    socket.on('draw:undo', () => {
+    socket.on('draw:undo', async () => {
       const code = socketRoomMap.get(socket.id);
       if (!code) return;
-      const room = rooms.get(code);
+      const room = await getRoom(code);
       if (!room) return;
 
       const canDraw =
@@ -819,9 +416,8 @@ async function startServer() {
       if (!canDraw || room.strokes.length === 0) return;
 
       const last = room.strokes.pop();
-      if (last) {
-        room.redoStack.push(last);
-      }
+      if (last) room.redoStack.push(last);
+      await saveRoom(room);
       io.to(room.code).emit('canvas:sync', {
         strokes: room.strokes,
         canUndo: room.strokes.length > 0,
@@ -829,10 +425,10 @@ async function startServer() {
       });
     });
 
-    socket.on('draw:redo', () => {
+    socket.on('draw:redo', async () => {
       const code = socketRoomMap.get(socket.id);
       if (!code) return;
-      const room = rooms.get(code);
+      const room = await getRoom(code);
       if (!room) return;
 
       const canDraw =
@@ -840,9 +436,8 @@ async function startServer() {
       if (!canDraw || room.redoStack.length === 0) return;
 
       const restored = room.redoStack.pop();
-      if (restored) {
-        room.strokes.push(restored);
-      }
+      if (restored) room.strokes.push(restored);
+      await saveRoom(room);
       io.to(room.code).emit('canvas:sync', {
         strokes: room.strokes,
         canUndo: room.strokes.length > 0,
@@ -850,10 +445,10 @@ async function startServer() {
       });
     });
 
-    socket.on('canvas:reaction', (emoji: string) => {
+    socket.on('canvas:reaction', async (emoji: string) => {
       const code = socketRoomMap.get(socket.id);
       if (!code) return;
-      const room = rooms.get(code);
+      const room = await getRoom(code);
       if (!room) return;
       const player = room.players.find((p) => p.id === socket.id);
       if (!player) return;
@@ -868,159 +463,54 @@ async function startServer() {
       });
     });
 
-    socket.on('chat:guess', (rawText: string) => {
+    socket.on('chat:guess', async (rawText: string) => {
       const code = socketRoomMap.get(socket.id);
       if (!code) return;
-      const room = rooms.get(code);
+      const room = await getRoom(code);
       if (!room) return;
-      const player = room.players.find((p) => p.id === socket.id);
-      if (!player) return;
 
-      const text = String(rawText ?? '').trim().slice(0, 140);
-      if (!text) return;
+      const result = processGuessOrChat(room, socket.id, rawText);
+      if (!result.message) return;
 
-      // Outside of active drawing, normal chat
-      if (room.phase !== 'DRAWING' || !room.secretWord) {
-        const msg: ChatMessage = {
-          id: makeId('msg'),
-          playerId: player.id,
-          playerName: player.name,
-          text,
-          kind: 'chat',
-          timestamp: Date.now(),
-        };
-        room.messages.push(msg);
-        io.to(room.code).emit('chat:message', msg);
+      if (result.type === 'private_to_sender') {
+        socket.emit('chat:message', result.message);
         return;
       }
 
-      // Active drawer cannot leak the answer
-      if (player.id === room.drawerId) {
-        if (isExactWordMatch(text, room.secretWord) || isCloseGuess(text, room.secretWord)) {
-          socket.emit('chat:message', {
-            id: makeId('msg'),
-            text: "You can't type the secret word while drawing!",
-            kind: 'system',
-            timestamp: Date.now(),
-          });
-          return;
-        }
-        const msg: ChatMessage = {
-          id: makeId('msg'),
-          playerId: player.id,
-          playerName: `${player.name} (Drawer)`,
-          text,
-          kind: 'chat',
-          timestamp: Date.now(),
-        };
-        room.messages.push(msg);
-        io.to(room.code).emit('chat:message', msg);
-        return;
-      }
-
-      // Player who already guessed chats privately with other guessers & drawer
-      if (player.hasGuessed) {
-        if (isExactWordMatch(text, room.secretWord)) {
-          socket.emit('chat:message', {
-            id: makeId('msg'),
-            text: 'You already found the word!',
-            kind: 'system',
-            timestamp: Date.now(),
-          });
-          return;
-        }
-        const msg: ChatMessage = {
-          id: makeId('msg'),
-          playerId: player.id,
-          playerName: `${player.name} ✓`,
-          text,
-          kind: 'chat',
-          timestamp: Date.now(),
-        };
+      if (result.type === 'private_to_guessers') {
         for (const p of room.players) {
-          if (p.connected && (p.hasGuessed || p.id === room.drawerId)) {
-            io.to(p.id).emit('chat:message', msg);
+          if (p.connected && !p.isHttp && (p.hasGuessed || p.id === room.drawerId)) {
+            io.to(p.id).emit('chat:message', result.message);
           }
         }
         return;
       }
 
-      // Check exact match (case-insensitive & multi-word spacing normalized)
-      if (isExactWordMatch(text, room.secretWord)) {
-        const guessedCount = room.players.filter((p) => p.hasGuessed).length;
-        const guessOrder = guessedCount + 1;
-        player.hasGuessed = true;
-        player.guessOrder = guessOrder;
+      if (result.type === 'broadcast') {
+        await saveRoom(room);
+        io.to(room.code).emit('chat:message', result.message);
+        return;
+      }
 
-        const speedRatio = room.timeLeft / Math.max(1, room.totalTime);
-        const orderBonus = Math.max(0, 60 - (guessOrder - 1) * 15);
-        const points = Math.round(120 + speedRatio * 280 + orderBonus);
-
-        player.roundScore += points;
-        player.score += points;
-        room.guessTimes.set(player.id, Math.max(1, room.totalTime - room.timeLeft));
-
-        const drawer = room.players.find((p) => p.id === room.drawerId);
-        if (drawer) {
-          drawer.roundScore += 60;
-          drawer.score += 60;
-        }
-
-        const correctMsg: ChatMessage = {
-          id: makeId('msg'),
-          playerId: player.id,
-          playerName: player.name,
-          text: `${player.name} guessed the word! (+${points} pts)`,
-          kind: 'correct',
-          timestamp: Date.now(),
-        };
-        room.messages.push(correctMsg);
-        io.to(room.code).emit('chat:message', correctMsg);
-
-        // Reveal full word to this guesser immediately
+      if (result.type === 'correct') {
+        await saveRoom(room);
+        io.to(room.code).emit('chat:message', result.message);
         socket.emit('guess:accepted', {
-          word: room.secretWord,
-          points,
-          hintPattern: room.secretWord.toUpperCase(),
+          word: result.acceptedWord,
+          points: result.points,
+          hintPattern: (result.acceptedWord ?? '').toUpperCase(),
         });
-
         io.to(room.code).emit('players:updated', room.players);
-
-        const nonDrawers = room.players.filter((p) => p.connected && p.id !== room.drawerId);
-        if (nonDrawers.length > 0 && nonDrawers.every((p) => p.hasGuessed)) {
-          endRound(room, 'all_guessed');
+        if (result.allGuessed) {
+          syncRoomToAll(room);
         }
-        return;
       }
-
-      // Check close guess (private nudge only to sender so it never spoils!)
-      if (isCloseGuess(text, room.secretWord)) {
-        socket.emit('chat:message', {
-          id: makeId('msg'),
-          text: `"${text}" is very close!`,
-          kind: 'close',
-          timestamp: Date.now(),
-        });
-        return;
-      }
-
-      // Otherwise broadcast standard guess in chat
-      const msg: ChatMessage = {
-        id: makeId('msg'),
-        playerId: player.id,
-        playerName: player.name,
-        text,
-        kind: 'chat',
-        timestamp: Date.now(),
-      };
-      room.messages.push(msg);
-      io.to(room.code).emit('chat:message', msg);
     });
 
-    socket.on('voice:join', () => {
+    socket.on('voice:join', async () => {
       const code = socketRoomMap.get(socket.id);
       if (!code) return;
-      const room = rooms.get(code);
+      const room = await getRoom(code);
       if (!room) return;
       const player = room.players.find((p) => p.id === socket.id);
       if (!player) return;
@@ -1033,15 +523,16 @@ async function startServer() {
         .filter((p) => p.connected && p.voiceJoined && p.id !== socket.id)
         .map((p) => p.id);
 
+      await saveRoom(room);
       socket.emit('voice:peers', { peerIds: activePeerIds });
       socket.to(room.code).emit('voice:peerJoined', { peerId: socket.id });
       io.to(room.code).emit('players:updated', room.players);
     });
 
-    socket.on('voice:leave', () => {
+    socket.on('voice:leave', async () => {
       const code = socketRoomMap.get(socket.id);
       if (!code) return;
-      const room = rooms.get(code);
+      const room = await getRoom(code);
       if (!room) return;
       const player = room.players.find((p) => p.id === socket.id);
       if (!player) return;
@@ -1050,29 +541,29 @@ async function startServer() {
       player.voiceMuted = false;
       player.isSpeaking = false;
 
+      await saveRoom(room);
       socket.to(room.code).emit('voice:peerLeft', { peerId: socket.id });
       io.to(room.code).emit('players:updated', room.players);
     });
 
-    socket.on('voice:mute', (muted: boolean) => {
+    socket.on('voice:mute', async (muted: boolean) => {
       const code = socketRoomMap.get(socket.id);
       if (!code) return;
-      const room = rooms.get(code);
+      const room = await getRoom(code);
       if (!room) return;
       const player = room.players.find((p) => p.id === socket.id);
       if (!player) return;
 
       player.voiceMuted = Boolean(muted);
-      if (player.voiceMuted) {
-        player.isSpeaking = false;
-      }
+      if (player.voiceMuted) player.isSpeaking = false;
+      await saveRoom(room);
       io.to(room.code).emit('players:updated', room.players);
     });
 
-    socket.on('voice:speaking', (speaking: boolean) => {
+    socket.on('voice:speaking', async (speaking: boolean) => {
       const code = socketRoomMap.get(socket.id);
       if (!code) return;
-      const room = rooms.get(code);
+      const room = await getRoom(code);
       if (!room) return;
       const player = room.players.find((p) => p.id === socket.id);
       if (!player || !player.voiceJoined) return;
@@ -1085,14 +576,14 @@ async function startServer() {
 
     socket.on(
       'voice:signal',
-      (payload: {
+      async (payload: {
         to: string;
         description?: Record<string, unknown>;
         candidate?: Record<string, unknown>;
       }) => {
         const code = socketRoomMap.get(socket.id);
         if (!code || !payload?.to) return;
-        const room = rooms.get(code);
+        const room = await getRoom(code);
         if (!room) return;
         const targetExists = room.players.some((p) => p.id === payload.to && p.connected);
         if (!targetExists) return;
@@ -1105,8 +596,8 @@ async function startServer() {
       }
     );
 
-    socket.on('disconnect', () => {
-      handlePlayerLeave(socket.id);
+    socket.on('disconnect', async () => {
+      await handlePlayerLeave(socket.id);
     });
   });
 

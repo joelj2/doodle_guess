@@ -16,6 +16,26 @@ interface PeerEntry {
   pendingCandidates: RTCIceCandidateInit[];
 }
 
+export interface IncomingVoiceSignal {
+  from: string;
+  description?: RTCSessionDescriptionInit;
+  candidate?: RTCIceCandidateInit;
+}
+
+export interface VoiceTransportAdapter {
+  mode: 'socketio' | 'http';
+  socket: Socket | null;
+  onJoinVoice: () => Promise<string[]>;
+  onLeaveVoice: () => void;
+  onMuteVoice: (muted: boolean) => void;
+  onSpeakingVoice: (speaking: boolean) => void;
+  onSignalVoice: (payload: {
+    to: string;
+    description?: RTCSessionDescriptionInit;
+    candidate?: RTCIceCandidateInit;
+  }) => void;
+}
+
 export interface VoiceChatState {
   joined: boolean;
   joining: boolean;
@@ -29,9 +49,14 @@ export interface VoiceChatState {
   leaveVoice: () => void;
   toggleMicMute: () => void;
   toggleDeafen: () => void;
+  handleIncomingSignals: (signals: IncomingVoiceSignal[]) => void;
+  syncActiveVoicePeers: (activePeerIds: string[]) => void;
 }
 
-export function useVoiceChat(socket: Socket | null, inRoom: boolean): VoiceChatState {
+export function useVoiceChat(
+  transport: VoiceTransportAdapter,
+  inRoom: boolean
+): VoiceChatState {
   const [joined, setJoined] = useState(false);
   const [joining, setJoining] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
@@ -49,9 +74,11 @@ export function useVoiceChat(socket: Socket | null, inRoom: boolean): VoiceChatS
   const lastSpeakTimeRef = useRef(0);
   const deafenedRef = useRef(false);
   const micMutedRef = useRef(false);
+  const transportRef = useRef(transport);
 
   deafenedRef.current = deafened;
   micMutedRef.current = micMuted;
+  transportRef.current = transport;
 
   const updatePeerCount = useCallback(() => {
     setConnectedPeerCount(peersRef.current.size);
@@ -73,7 +100,7 @@ export function useVoiceChat(socket: Socket | null, inRoom: boolean): VoiceChatS
         entry.audioEl.srcObject = null;
         entry.audioEl.remove();
       } catch {
-        // ignore audio cleanup errors
+        // ignore cleanup errors
       }
       peersRef.current.delete(peerId);
       updatePeerCount();
@@ -131,8 +158,8 @@ export function useVoiceChat(socket: Socket | null, inRoom: boolean): VoiceChatS
       updatePeerCount();
 
       pc.onicecandidate = (evt) => {
-        if (evt.candidate && socket) {
-          socket.emit('voice:signal', {
+        if (evt.candidate) {
+          transportRef.current.onSignalVoice({
             to: peerId,
             candidate: evt.candidate.toJSON(),
           });
@@ -156,42 +183,30 @@ export function useVoiceChat(socket: Socket | null, inRoom: boolean): VoiceChatS
 
       return entry;
     },
-    [closePeer, socket, updatePeerCount]
+    [closePeer, updatePeerCount]
   );
 
-  // Signaling listeners
-  useEffect(() => {
-    if (!socket) return;
-
-    const handlePeers = async ({ peerIds }: { peerIds: string[] }) => {
+  const initiateOffersToPeers = useCallback(
+    async (peerIds: string[]) => {
       for (const peerId of peerIds) {
         try {
           const entry = createPeerConnection(peerId);
           const offer = await entry.pc.createOffer();
           await entry.pc.setLocalDescription(offer);
-          socket.emit('voice:signal', {
+          transportRef.current.onSignalVoice({
             to: peerId,
-            description: entry.pc.localDescription?.toJSON(),
+            description: entry.pc.localDescription?.toJSON() as RTCSessionDescriptionInit | undefined,
           });
         } catch {
           // ignore individual peer negotiation error
         }
       }
-    };
+    },
+    [createPeerConnection]
+  );
 
-    const handlePeerLeft = ({ peerId }: { peerId: string }) => {
-      closePeer(peerId);
-    };
-
-    const handleSignal = async ({
-      from,
-      description,
-      candidate,
-    }: {
-      from: string;
-      description?: RTCSessionDescriptionInit;
-      candidate?: RTCIceCandidateInit;
-    }) => {
+  const handleIncomingSignal = useCallback(
+    async ({ from, description, candidate }: IncomingVoiceSignal) => {
       if (!localStreamRef.current) return;
       const entry = createPeerConnection(from);
 
@@ -206,9 +221,9 @@ export function useVoiceChat(socket: Socket | null, inRoom: boolean): VoiceChatS
           if (description.type === 'offer') {
             const answer = await entry.pc.createAnswer();
             await entry.pc.setLocalDescription(answer);
-            socket.emit('voice:signal', {
+            transportRef.current.onSignalVoice({
               to: from,
-              description: entry.pc.localDescription?.toJSON(),
+              description: entry.pc.localDescription?.toJSON() as RTCSessionDescriptionInit | undefined,
             });
           }
         } else if (candidate) {
@@ -221,6 +236,46 @@ export function useVoiceChat(socket: Socket | null, inRoom: boolean): VoiceChatS
       } catch {
         // ignore transient signaling race
       }
+    },
+    [createPeerConnection]
+  );
+
+  const handleIncomingSignals = useCallback(
+    (signals: IncomingVoiceSignal[]) => {
+      for (const sig of signals) {
+        void handleIncomingSignal(sig);
+      }
+    },
+    [handleIncomingSignal]
+  );
+
+  const syncActiveVoicePeers = useCallback(
+    (activePeerIds: string[]) => {
+      const activeSet = new Set(activePeerIds);
+      for (const peerId of Array.from(peersRef.current.keys())) {
+        if (!activeSet.has(peerId)) {
+          closePeer(peerId);
+        }
+      }
+    },
+    [closePeer]
+  );
+
+  // Socket.IO signaling listeners (when in socketio mode)
+  useEffect(() => {
+    const socket = transport.socket;
+    if (!socket || transport.mode !== 'socketio') return;
+
+    const handlePeers = ({ peerIds }: { peerIds: string[] }) => {
+      void initiateOffersToPeers(peerIds);
+    };
+
+    const handlePeerLeft = ({ peerId }: { peerId: string }) => {
+      closePeer(peerId);
+    };
+
+    const handleSignal = (sig: IncomingVoiceSignal) => {
+      void handleIncomingSignal(sig);
     };
 
     socket.on('voice:peers', handlePeers);
@@ -232,84 +287,79 @@ export function useVoiceChat(socket: Socket | null, inRoom: boolean): VoiceChatS
       socket.off('voice:peerLeft', handlePeerLeft);
       socket.off('voice:signal', handleSignal);
     };
-  }, [socket, createPeerConnection, closePeer]);
+  }, [transport.socket, transport.mode, initiateOffersToPeers, closePeer, handleIncomingSignal]);
 
-  // Leave voice automatically when leaving a room
   useEffect(() => {
     if (!inRoom && joined) {
-      socket?.emit('voice:leave');
+      transportRef.current.onLeaveVoice();
       cleanupAll();
     }
-  }, [inRoom, joined, socket, cleanupAll]);
+  }, [inRoom, joined, cleanupAll]);
 
-  // Unmount cleanup
   useEffect(() => {
     return () => {
       cleanupAll();
     };
   }, [cleanupAll]);
 
-  const startVadMonitor = useCallback(
-    (stream: MediaStream) => {
-      try {
-        const AudioCtx =
-          window.AudioContext ||
-          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        if (!AudioCtx) return;
+  const startVadMonitor = useCallback((stream: MediaStream) => {
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
 
-        const ctx = new AudioCtx();
-        audioCtxRef.current = ctx;
-        const source = ctx.createMediaStreamSource(stream);
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
+      const ctx = new AudioCtx();
+      audioCtxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
 
-        const data = new Uint8Array(analyser.fftSize);
+      const data = new Uint8Array(analyser.fftSize);
 
-        vadTimerRef.current = setInterval(() => {
-          if (micMutedRef.current) {
-            setMicLevel(0);
-            if (speakingRef.current) {
-              speakingRef.current = false;
-              setIsSpeaking(false);
-              socket?.emit('voice:speaking', false);
-            }
-            return;
-          }
-
-          analyser.getByteTimeDomainData(data);
-          let sum = 0;
-          for (let i = 0; i < data.length; i++) {
-            const v = (data[i] - 128) / 128;
-            sum += v * v;
-          }
-          const rms = Math.sqrt(sum / data.length);
-          const scaled = Math.min(100, Math.round(rms * 420));
-          setMicLevel(scaled);
-
-          const now = Date.now();
-          if (rms > 0.025) {
-            lastSpeakTimeRef.current = now;
-            if (!speakingRef.current) {
-              speakingRef.current = true;
-              setIsSpeaking(true);
-              socket?.emit('voice:speaking', true);
-            }
-          } else if (speakingRef.current && now - lastSpeakTimeRef.current > 350) {
+      vadTimerRef.current = setInterval(() => {
+        if (micMutedRef.current) {
+          setMicLevel(0);
+          if (speakingRef.current) {
             speakingRef.current = false;
             setIsSpeaking(false);
-            socket?.emit('voice:speaking', false);
+            transportRef.current.onSpeakingVoice(false);
           }
-        }, 90);
-      } catch {
-        // ignore AudioContext restriction
-      }
-    },
-    [socket]
-  );
+          return;
+        }
+
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+          const v = (data[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / data.length);
+        const scaled = Math.min(100, Math.round(rms * 420));
+        setMicLevel(scaled);
+
+        const now = Date.now();
+        if (rms > 0.025) {
+          lastSpeakTimeRef.current = now;
+          if (!speakingRef.current) {
+            speakingRef.current = true;
+            setIsSpeaking(true);
+            transportRef.current.onSpeakingVoice(true);
+          }
+        } else if (speakingRef.current && now - lastSpeakTimeRef.current > 350) {
+          speakingRef.current = false;
+          setIsSpeaking(false);
+          transportRef.current.onSpeakingVoice(false);
+        }
+      }, 90);
+    } catch {
+      // ignore AudioContext restriction
+    }
+  }, []);
 
   const joinVoice = useCallback(async () => {
-    if (!socket || joined || joining) return;
+    if (joined || joining) return;
     if (!navigator.mediaDevices?.getUserMedia) {
       setError('Microphone access is not supported in this browser.');
       return;
@@ -332,7 +382,11 @@ export function useVoiceChat(socket: Socket | null, inRoom: boolean): VoiceChatS
       setJoining(false);
       setMicMuted(false);
       startVadMonitor(stream);
-      socket.emit('voice:join');
+
+      const peerIds = await transportRef.current.onJoinVoice();
+      if (peerIds.length > 0 && transportRef.current.mode === 'http') {
+        await initiateOffersToPeers(peerIds);
+      }
     } catch (err) {
       setJoining(false);
       const msg =
@@ -341,12 +395,12 @@ export function useVoiceChat(socket: Socket | null, inRoom: boolean): VoiceChatS
           : 'Could not access microphone. Check your audio input device.';
       setError(msg);
     }
-  }, [socket, joined, joining, startVadMonitor]);
+  }, [joined, joining, startVadMonitor, initiateOffersToPeers]);
 
   const leaveVoice = useCallback(() => {
-    socket?.emit('voice:leave');
+    transportRef.current.onLeaveVoice();
     cleanupAll();
-  }, [socket, cleanupAll]);
+  }, [cleanupAll]);
 
   const toggleMicMute = useCallback(() => {
     if (!localStreamRef.current) return;
@@ -360,8 +414,8 @@ export function useVoiceChat(socket: Socket | null, inRoom: boolean): VoiceChatS
       setIsSpeaking(false);
       setMicLevel(0);
     }
-    socket?.emit('voice:mute', next);
-  }, [socket]);
+    transportRef.current.onMuteVoice(next);
+  }, []);
 
   const toggleDeafen = useCallback(() => {
     const next = !deafenedRef.current;
@@ -384,5 +438,7 @@ export function useVoiceChat(socket: Socket | null, inRoom: boolean): VoiceChatS
     leaveVoice,
     toggleMicMute,
     toggleDeafen,
+    handleIncomingSignals,
+    syncActiveVoicePeers,
   };
 }
