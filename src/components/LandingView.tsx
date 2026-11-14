@@ -59,12 +59,7 @@ export function LandingView({
           <a href="#public-rooms" className="hover:text-zinc-950 transition-colors whitespace-nowrap shrink-0">
             Public Rooms
           </a>
-          <a href="#mechanics" className="hover:text-zinc-950 transition-colors whitespace-nowrap shrink-0">
-            Hints & Scoring
-          </a>
-          <a href="#rules" className="hover:text-zinc-950 transition-colors whitespace-nowrap shrink-0">
-            Word Rules
-          </a>
+          
         </nav>
 
         <div className="flex items-center shrink-0">
