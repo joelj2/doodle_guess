@@ -195,15 +195,15 @@ export function AvatarCustomizer({ value, onChange }: AvatarCustomizerProps) {
             const accessory = AVATAR_ACCESSORIES[Math.floor(Math.random() * AVATAR_ACCESSORIES.length)].id;
             onChange({ color, face, accessory });
           }}
-          className="text-xs font-medium text-zinc-600 hover:text-zinc-950 underline underline-offset-2 cursor-pointer whitespace-nowrap"
+          className="text-[11px] font-medium text-zinc-600 hover:text-zinc-950 underline underline-offset-2 cursor-pointer whitespace-nowrap"
         >
           Randomize
         </button>
       </div>
 
-      <div className="flex-1 w-full space-y-3">
+      <div className="flex-1 w-full space-y-2.5">
         <div>
-          <span className="block text-xs font-medium text-zinc-500 mb-1.5">Ink Color</span>
+          <span className="block text-[11px] font-medium text-zinc-500 mb-1">Ink Color</span>
           <div className="flex flex-wrap gap-1.5">
             {AVATAR_COLORS.map((c) => (
               <button
@@ -212,7 +212,7 @@ export function AvatarCustomizer({ value, onChange }: AvatarCustomizerProps) {
                 aria-label={`Color ${c}`}
                 onClick={() => onChange({ ...value, color: c })}
                 style={{ backgroundColor: c }}
-                className={`w-7 h-7 rounded-lg transition-transform cursor-pointer ${
+                className={`w-6 h-6 rounded-md transition-transform cursor-pointer ${
                   value.color === c ? 'ring-2 ring-offset-2 ring-zinc-900 scale-105' : 'hover:scale-105'
                 }`}
               />
@@ -221,14 +221,14 @@ export function AvatarCustomizer({ value, onChange }: AvatarCustomizerProps) {
         </div>
 
         <div>
-          <span className="block text-xs font-medium text-zinc-500 mb-1.5">Expression</span>
-          <div className="grid grid-cols-3 gap-1.5">
+          <span className="block text-[11px] font-medium text-zinc-500 mb-1">Expression</span>
+          <div className="grid grid-cols-3 gap-1">
             {AVATAR_FACES.map((f) => (
               <button
                 key={f.id}
                 type="button"
                 onClick={() => onChange({ ...value, face: f.id })}
-                className={`px-2 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer whitespace-nowrap ${
+                className={`px-2 py-1 text-xs font-medium rounded-lg border transition-colors cursor-pointer whitespace-nowrap ${
                   value.face === f.id
                     ? 'bg-zinc-900 text-white border-zinc-900'
                     : 'bg-white text-zinc-700 border-[#E4E2DC] hover:bg-zinc-50'
@@ -241,14 +241,14 @@ export function AvatarCustomizer({ value, onChange }: AvatarCustomizerProps) {
         </div>
 
         <div>
-          <span className="block text-xs font-medium text-zinc-500 mb-1.5">Accessory</span>
-          <div className="grid grid-cols-3 gap-1.5">
+          <span className="block text-[11px] font-medium text-zinc-500 mb-1">Accessory</span>
+          <div className="grid grid-cols-3 gap-1">
             {AVATAR_ACCESSORIES.map((acc) => (
               <button
                 key={acc.id}
                 type="button"
                 onClick={() => onChange({ ...value, accessory: acc.id })}
-                className={`px-2 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer whitespace-nowrap ${
+                className={`px-2 py-1 text-xs font-medium rounded-lg border transition-colors cursor-pointer whitespace-nowrap ${
                   value.accessory === acc.id
                     ? 'bg-zinc-900 text-white border-zinc-900'
                     : 'bg-white text-zinc-700 border-[#E4E2DC] hover:bg-zinc-50'

@@ -587,9 +587,9 @@ export function DrawingCanvas({
   return (
     <div className="flex flex-col gap-2.5 w-full">
       {/* Studio Board Frame */}
-      <div className="relative w-full aspect-[16/10] bg-white rounded-2xl border border-[#E4E2DC] shadow-sm overflow-hidden select-none">
+      <div className="relative w-full aspect-[16/10] max-h-[28vh] sm:max-h-none bg-white rounded-2xl border border-[#E4E2DC] shadow-sm overflow-hidden select-none shrink-0">
         {isWarmup && (
-          <div className="absolute top-2.5 left-2.5 z-20 px-2.5 py-1 rounded-lg bg-zinc-900/85 text-white text-[11px] sm:text-xs font-medium pointer-events-none">
+          <div className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded-lg bg-zinc-900/85 text-white text-[10px] sm:text-[11px] font-medium pointer-events-none">
             Lobby Warm-Up Board
           </div>
         )}
@@ -643,28 +643,28 @@ export function DrawingCanvas({
         )}
 
         {/* Top-Right Canvas Utility Buttons */}
-        <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
+        <div className="absolute top-2 right-2 z-20 flex items-center gap-1">
           {canDraw && (
             <button
               type="button"
               onClick={() => setShowGrid((g) => !g)}
               title="Toggle alignment dot grid"
-              className={`min-w-[36px] min-h-[36px] p-2 rounded-lg border transition-colors cursor-pointer flex items-center justify-center ${
+              className={`min-w-[32px] min-h-[32px] p-1.5 rounded-lg border transition-colors cursor-pointer flex items-center justify-center ${
                 showGrid
                   ? 'bg-zinc-900 border-zinc-900 text-white'
                   : 'bg-white/90 hover:bg-white border-[#E4E2DC] text-zinc-700'
               }`}
             >
-              <Grid className="w-4 h-4" />
+              <Grid className="w-3.5 h-3.5" />
             </button>
           )}
           <button
             type="button"
             onClick={handleDownloadPng}
             title="Save sketch as PNG"
-            className="min-w-[36px] min-h-[36px] p-2 rounded-lg bg-white/90 hover:bg-white border border-[#E4E2DC] text-zinc-700 hover:text-zinc-950 transition-colors cursor-pointer flex items-center justify-center"
+            className="min-w-[32px] min-h-[32px] p-1.5 rounded-lg bg-white/90 hover:bg-white border border-[#E4E2DC] text-zinc-700 hover:text-zinc-950 transition-colors cursor-pointer flex items-center justify-center"
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-3.5 h-3.5" />
           </button>
         </div>
 
@@ -703,9 +703,9 @@ export function DrawingCanvas({
 
       {/* Studio Toolbar (Active only when user can draw) */}
       {canDraw && (
-        <div className="bg-white rounded-2xl border border-[#E4E2DC] p-2.5 sm:p-3 flex flex-col gap-2.5">
-          {/* Tools Row — scrollable on very narrow screens, crisp 40px+ touch targets */}
-          <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="bg-white rounded-2xl border border-[#E4E2DC] p-2 sm:p-2.5 flex flex-col gap-2 shrink-0">
+          {/* Tools Row — scrollable on very narrow screens */}
+          <div className="flex items-center justify-between gap-1.5 flex-wrap">
             <div className="flex items-center gap-1 overflow-x-auto pb-0.5 max-w-full">
               {toolButtons.map((tb) => {
                 const active = tool === tb.id;
@@ -715,7 +715,7 @@ export function DrawingCanvas({
                     type="button"
                     onClick={() => setTool(tb.id)}
                     title={tb.shortcut ? `${tb.label} (${tb.shortcut})` : tb.label}
-                    className={`min-h-[40px] min-w-[40px] flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    className={`min-h-[34px] min-w-[34px] flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                       active
                         ? 'bg-zinc-900 text-white'
                         : 'bg-[#F4F2ED] text-zinc-700 hover:bg-zinc-200/70'
@@ -731,7 +731,7 @@ export function DrawingCanvas({
                 <button
                   type="button"
                   onClick={() => setShapeFilled((f) => !f)}
-                  className={`min-h-[40px] px-3 py-2 rounded-xl text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  className={`min-h-[34px] px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     shapeFilled
                       ? 'bg-blue-600 border-blue-600 text-white'
                       : 'bg-white border-[#E4E2DC] text-zinc-700 hover:bg-zinc-50'
@@ -743,15 +743,15 @@ export function DrawingCanvas({
             </div>
 
             {/* History & Clear */}
-            <div className="flex items-center gap-1.5 ml-auto">
+            <div className="flex items-center gap-1 ml-auto">
               <button
                 type="button"
                 onClick={onUndo}
                 disabled={!canUndo}
                 title="Undo (Ctrl+Z)"
-                className="min-h-[40px] min-w-[40px] flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl text-xs font-medium bg-[#F4F2ED] text-zinc-700 hover:bg-zinc-200/70 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap shrink-0"
+                className="min-h-[34px] min-w-[34px] flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-medium bg-[#F4F2ED] text-zinc-700 hover:bg-zinc-200/70 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap shrink-0"
               >
-                <Undo2 className="w-4 h-4" />
+                <Undo2 className="w-3.5 h-3.5" />
                 <span className="hidden md:inline">Undo</span>
               </button>
               <button
@@ -759,26 +759,26 @@ export function DrawingCanvas({
                 onClick={onRedo}
                 disabled={!canRedo}
                 title="Redo (Ctrl+Shift+Z)"
-                className="min-h-[40px] min-w-[40px] flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl text-xs font-medium bg-[#F4F2ED] text-zinc-700 hover:bg-zinc-200/70 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap shrink-0"
+                className="min-h-[34px] min-w-[34px] flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-medium bg-[#F4F2ED] text-zinc-700 hover:bg-zinc-200/70 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap shrink-0"
               >
-                <Redo2 className="w-4 h-4" />
+                <Redo2 className="w-3.5 h-3.5" />
                 <span className="hidden md:inline">Redo</span>
               </button>
               <button
                 type="button"
                 onClick={onClear}
                 title="Clear canvas"
-                className="min-h-[40px] min-w-[40px] flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100 cursor-pointer whitespace-nowrap shrink-0"
+                className="min-h-[34px] min-w-[34px] flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100 cursor-pointer whitespace-nowrap shrink-0"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-3.5 h-3.5" />
                 <span className="hidden md:inline">Clear</span>
               </button>
             </div>
           </div>
 
           {/* Colors + Sizes Row */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#E4E2DC]">
-            <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-[#E4E2DC]">
+            <div className="flex flex-wrap items-center gap-1">
               {PALETTE_COLORS.map((hex) => {
                 const active = color.toUpperCase() === hex.toUpperCase() && tool !== 'eraser';
                 return (
@@ -791,7 +791,7 @@ export function DrawingCanvas({
                       if (tool === 'eraser') setTool('pen');
                     }}
                     style={{ backgroundColor: hex }}
-                    className={`w-7 h-7 sm:w-6 sm:h-6 rounded-md border transition-transform cursor-pointer ${
+                    className={`w-5.5 h-5.5 sm:w-5 sm:h-5 rounded-md border transition-transform cursor-pointer ${
                       hex === '#FFFFFF' ? 'border-zinc-300' : 'border-black/10'
                     } ${active ? 'ring-2 ring-offset-1 ring-zinc-900 scale-110' : 'hover:scale-110'}`}
                   />
@@ -800,10 +800,10 @@ export function DrawingCanvas({
 
               <label
                 title="Custom color"
-                className="min-h-[32px] flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F4F2ED] hover:bg-zinc-200/70 text-xs font-medium text-zinc-700 cursor-pointer whitespace-nowrap shrink-0"
+                className="min-h-[28px] flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#F4F2ED] hover:bg-zinc-200/70 text-[11px] font-medium text-zinc-700 cursor-pointer whitespace-nowrap shrink-0"
               >
                 <span
-                  className="w-4 h-4 rounded border border-black/15"
+                  className="w-3.5 h-3.5 rounded border border-black/15"
                   style={{ backgroundColor: color }}
                 />
                 <span>Custom</span>
@@ -820,7 +820,7 @@ export function DrawingCanvas({
             </div>
 
             {/* Brush Sizes */}
-            <div className="flex items-center gap-1 px-1.5 py-1 rounded-xl bg-[#F4F2ED]">
+            <div className="flex items-center gap-1 px-1 py-0.5 rounded-xl bg-[#F4F2ED]">
               {BRUSH_SIZES.map((sz) => {
                 const active = brushSize === sz;
                 return (
@@ -829,15 +829,15 @@ export function DrawingCanvas({
                     type="button"
                     onClick={() => setBrushSize(sz)}
                     aria-label={`Brush size ${sz}`}
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
                       active ? 'bg-white shadow-sm ring-1 ring-zinc-900/20' : 'hover:bg-white/60'
                     }`}
                   >
                     <span
                       className="rounded-full block"
                       style={{
-                        width: Math.max(4, Math.min(20, sz * 0.62)),
-                        height: Math.max(4, Math.min(20, sz * 0.62)),
+                        width: Math.max(3.5, Math.min(18, sz * 0.55)),
+                        height: Math.max(3.5, Math.min(18, sz * 0.55)),
                         backgroundColor: tool === 'eraser' ? '#71717A' : color,
                         border: color === '#FFFFFF' ? '1px solid #D4D4D8' : 'none',
                       }}

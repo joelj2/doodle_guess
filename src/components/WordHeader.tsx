@@ -64,7 +64,7 @@ export function WordHeader({
 
   const progress = totalTime > 0 ? Math.max(0, Math.min(1, timeLeft / totalTime)) : 0;
   const isUrgent = phase === 'DRAWING' && timeLeft <= 12 && timeLeft > 0;
-  const radius = 19;
+  const radius = 16;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference * (1 - progress);
 
@@ -78,19 +78,19 @@ export function WordHeader({
   }
 
   return (
-    <header className="bg-white rounded-2xl border border-[#E4E2DC] px-3 sm:px-4 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+    <header className="bg-white rounded-2xl border border-[#E4E2DC] px-3 sm:px-4 py-2 sm:py-2.5 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
       {/* Left: Timer + Round & Room Code */}
-      <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
-        <div className="relative w-11 h-11 flex items-center justify-center shrink-0">
-          <svg className="w-11 h-11 -rotate-90" viewBox="0 0 46 46" aria-hidden="true">
-            <circle cx="23" cy="23" r={radius} fill="none" stroke="#E4E2DC" strokeWidth="4" />
+      <div className="flex items-center gap-2.5 shrink-0">
+        <div className="relative w-9.5 h-9.5 flex items-center justify-center shrink-0">
+          <svg className="w-9.5 h-9.5 -rotate-90" viewBox="0 0 40 40" aria-hidden="true">
+            <circle cx="20" cy="20" r={radius} fill="none" stroke="#E4E2DC" strokeWidth="3.5" />
             <circle
-              cx="23"
-              cy="23"
+              cx="20"
+              cy="20"
               r={radius}
               fill="none"
               stroke={isUrgent ? '#DC2626' : '#2563EB'}
-              strokeWidth="4"
+              strokeWidth="3.5"
               strokeLinecap="round"
               strokeDasharray={circumference}
               strokeDashoffset={strokeDashoffset}
@@ -98,7 +98,7 @@ export function WordHeader({
             />
           </svg>
           <span
-            className={`absolute font-mono-tabular text-xs font-bold ${
+            className={`absolute font-mono-tabular text-[11px] font-bold ${
               isUrgent ? 'text-red-600' : 'text-zinc-900'
             }`}
           >
@@ -107,7 +107,7 @@ export function WordHeader({
         </div>
 
         <div className="flex flex-col">
-          <div className="flex items-center gap-1.5 sm:gap-2 text-xs text-zinc-500">
+          <div className="flex items-center gap-1.5 text-xs text-zinc-500">
             <span className="font-semibold text-zinc-900 whitespace-nowrap">
               {phase === 'LOBBY'
                 ? 'Lobby'
@@ -123,15 +123,15 @@ export function WordHeader({
           <button
             type="button"
             onClick={handleCopyInvite}
-            className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 cursor-pointer w-fit whitespace-nowrap"
+            className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700 cursor-pointer w-fit whitespace-nowrap"
           >
-            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copied ? 'Link copied' : 'Copy invite'}</span>
+            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+            <span>{copied ? 'Copied' : 'Invite'}</span>
           </button>
         </div>
       </div>
 
-      {/* Right: Quick Voice, Audio & Leave Controls (placed before word row wrap on mobile) */}
+      {/* Right: Quick Voice, Audio & Leave Controls */}
       <div className="flex items-center gap-1.5 shrink-0 lg:order-3">
         <button
           type="button"
@@ -150,7 +150,7 @@ export function WordHeader({
                 ? 'Unmute microphone'
                 : 'Mute microphone'
           }
-          className={`min-h-[40px] min-w-[40px] px-2.5 py-2 rounded-xl inline-flex items-center justify-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+          className={`min-h-[34px] min-w-[34px] px-2.5 py-1.5 rounded-xl inline-flex items-center justify-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
             !voiceJoined
               ? 'bg-[#F4F2ED] hover:bg-zinc-200/70 text-zinc-700'
               : voiceMuted
@@ -161,9 +161,9 @@ export function WordHeader({
           }`}
         >
           {voiceJoined && voiceMuted ? (
-            <MicOff className="w-4 h-4" />
+            <MicOff className="w-3.5 h-3.5" />
           ) : (
-            <Mic className="w-4 h-4" />
+            <Mic className="w-3.5 h-3.5" />
           )}
           <span className="hidden sm:inline">
             {!voiceJoined ? 'Voice' : voiceMuted ? 'Muted' : 'Live'}
@@ -175,17 +175,17 @@ export function WordHeader({
           onClick={onToggleMute}
           aria-label={muted ? 'Unmute sound effects' : 'Mute sound effects'}
           title={muted ? 'Unmute sound effects' : 'Mute sound effects'}
-          className="min-h-[40px] min-w-[40px] p-2 rounded-xl bg-[#F4F2ED] hover:bg-zinc-200/70 text-zinc-700 transition-colors cursor-pointer flex items-center justify-center"
+          className="min-h-[34px] min-w-[34px] p-1.5 rounded-xl bg-[#F4F2ED] hover:bg-zinc-200/70 text-zinc-700 transition-colors cursor-pointer flex items-center justify-center"
         >
-          {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          {muted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
         </button>
 
         <button
           type="button"
           onClick={onLeaveRoom}
-          className="min-h-[40px] inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#F4F2ED] hover:bg-red-50 text-zinc-700 hover:text-red-700 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+          className="min-h-[34px] inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-[#F4F2ED] hover:bg-red-50 text-zinc-700 hover:text-red-700 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
         >
-          <LogOut className="w-4 h-4" />
+          <LogOut className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">Leave</span>
         </button>
       </div>
@@ -193,14 +193,14 @@ export function WordHeader({
       {/* Center: Secret Word / Progressive Timed Letter Hint Tiles */}
       <div className="w-full lg:w-auto lg:flex-1 lg:order-2 flex flex-col items-center justify-center pt-1 lg:pt-0 border-t lg:border-t-0 border-[#E4E2DC]">
         {phase === 'LOBBY' && (
-          <p className="text-xs sm:text-sm font-medium text-zinc-600 text-center">
+          <p className="text-xs font-medium text-zinc-600 text-center">
             Waiting in lobby — doodle on the board or invite friends
           </p>
         )}
 
         {phase === 'CHOOSING_WORD' && (
-          <div className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-zinc-800">
-            <Clock className="w-4 h-4 text-amber-600" />
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-800">
+            <Clock className="w-3.5 h-3.5 text-amber-600" />
             <span>
               {isDrawer ? 'Pick your secret word' : `${drawerName ?? 'Artist'} is choosing a word...`}
             </span>
@@ -209,7 +209,7 @@ export function WordHeader({
 
         {phase === 'DRAWING' && (
           <div className="flex flex-col items-center gap-1">
-            <div className="flex flex-wrap items-center justify-center gap-x-3 sm:gap-x-4 gap-y-1.5">
+            <div className="flex flex-wrap items-center justify-center gap-x-2.5 sm:gap-x-3 gap-y-1">
               {segments.map((seg, segIdx) => (
                 <div key={segIdx} className="flex items-center gap-1">
                   {Array.from(seg.word).map((char, offset) => {
@@ -219,7 +219,7 @@ export function WordHeader({
                     return (
                       <span
                         key={absIdx}
-                        className={`inline-flex items-center justify-center w-6 h-7 sm:w-7 sm:h-9 rounded-lg border font-mono-tabular text-xs sm:text-base font-bold transition-colors ${
+                        className={`inline-flex items-center justify-center w-6 h-7 sm:w-6.5 sm:h-8 rounded-lg border font-mono-tabular text-xs sm:text-sm font-bold transition-colors ${
                           isDrawer
                             ? wasHinted
                               ? 'bg-amber-50 border-amber-300 text-amber-900'
@@ -235,17 +235,17 @@ export function WordHeader({
                       </span>
                     );
                   })}
-                  <span className="ml-0.5 text-[11px] font-mono-tabular font-semibold text-zinc-400">
+                  <span className="ml-0.5 text-[10px] font-mono-tabular font-semibold text-zinc-400">
                     {seg.word.length}
                   </span>
                 </div>
               ))}
             </div>
 
-            <div className="flex items-center gap-3 text-xs text-zinc-500 text-center">
+            <div className="flex items-center gap-2.5 text-[11px] text-zinc-500 text-center">
               {isDrawer ? (
                 <span>
-                  Draw: <strong className="text-zinc-900">{secretWord}</strong>
+                  Draw: <strong className="text-zinc-900 font-bold">{secretWord}</strong>
                   {revealedIndices.length > 0 && ` · ${revealedIndices.length} hint(s) shown`}
                 </span>
               ) : hasGuessed ? (
@@ -254,11 +254,11 @@ export function WordHeader({
                 </span>
               ) : nextHintIn !== null ? (
                 <span className="inline-flex items-center gap-1 text-amber-700 font-medium">
-                  <Lightbulb className="w-3.5 h-3.5" />
-                  <span>Next letter hint in {nextHintIn}s</span>
+                  <Lightbulb className="w-3 h-3" />
+                  <span>Next hint in {nextHintIn}s</span>
                 </span>
               ) : (
-                <span>Any case works (lowercase or UPPERCASE)</span>
+                <span>Any case works (lowercase or uppercase)</span>
               )}
             </div>
           </div>
@@ -266,13 +266,13 @@ export function WordHeader({
 
         {phase === 'ROUND_END' && (
           <div className="text-center">
-            <span className="text-xs text-zinc-500">The word was</span>
-            <p className="font-display text-base sm:text-lg font-bold text-zinc-900">{secretWord}</p>
+            <span className="text-[11px] text-zinc-500">The word was</span>
+            <p className="font-display text-sm sm:text-base font-bold text-zinc-900">{secretWord}</p>
           </div>
         )}
 
         {phase === 'GAME_OVER' && (
-          <p className="font-display text-sm sm:text-base font-bold text-zinc-900">
+          <p className="font-display text-xs sm:text-sm font-bold text-zinc-900">
             Match Complete — Final Standings
           </p>
         )}
