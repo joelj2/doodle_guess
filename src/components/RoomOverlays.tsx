@@ -276,9 +276,8 @@ export function RoundSummaryBanner({ summary, timeLeft }: RoundSummaryBannerProp
               </p>
             </div>
             <span
-              className={`font-mono-tabular text-xs font-bold ${
-                r.pointsEarned > 0 ? 'text-emerald-700' : 'text-zinc-400'
-              }`}
+              className={`font-mono-tabular text-xs font-bold ${r.pointsEarned > 0 ? 'text-emerald-700' : 'text-zinc-400'
+                }`}
             >
               +{r.pointsEarned}
             </span>
@@ -338,11 +337,10 @@ export function GameOverOverlay({
           {ranked.map((p, idx) => (
             <div
               key={p.id}
-              className={`flex items-center gap-2.5 p-2 rounded-xl border ${
-                idx === 0
+              className={`flex items-center gap-2.5 p-2 rounded-xl border ${idx === 0
                   ? 'bg-amber-50/70 border-amber-200'
                   : 'bg-[#F4F2ED]/70 border-[#E4E2DC]'
-              }`}
+                }`}
             >
               <span className="font-mono-tabular text-xs font-bold text-zinc-700 w-5 text-center">
                 #{idx + 1}
