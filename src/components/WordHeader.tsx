@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Clock, Copy, Lightbulb, LogOut, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
+import { Check, Clock, Copy, LogOut, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import type { GamePhase } from '../shared/types.ts';
 
 interface WordHeaderProps {
@@ -251,11 +251,6 @@ export function WordHeader({
               ) : hasGuessed ? (
                 <span className="font-semibold text-emerald-700">
                   Correct! You found "{secretWord}"
-                </span>
-              ) : nextHintIn !== null ? (
-                <span className="inline-flex items-center gap-1 text-amber-700 font-medium">
-                  <Lightbulb className="w-3 h-3" />
-                  <span>Next hint in {nextHintIn}s</span>
                 </span>
               ) : (
                 <span>Any case works (lowercase or uppercase)</span>

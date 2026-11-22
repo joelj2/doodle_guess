@@ -223,10 +223,7 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
 
     if (room.phase === 'DRAWING' || room.phase === 'CHOOSING_WORD' || room.phase === 'ROUND_END') {
       const timeLeft = Math.max(0, Math.ceil((room.phaseEndsAt - now) / 1000));
-      const nextHintIn =
-        room.phase === 'DRAWING'
-          ? room.hintTriggers.find((t) => t < timeLeft && !room.triggeredHints.includes(t)) ?? null
-          : null;
+      const nextHintIn = null;
 
       // Broadcast timer tick
       broadcastToGuests({ type: 'timer:tick', timeLeft, nextHintIn });
