@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Lightbulb, Send } from 'lucide-react';
 import { motion } from 'motion/react';
 import type { ChatMessage, GamePhase } from '../shared/types.ts';
@@ -16,7 +16,7 @@ interface GuessChatProps {
   onSendReaction: (emoji: string) => void;
 }
 
-export function GuessChat({
+export const GuessChat = React.memo(function GuessChat({
   messages,
   phase,
   isDrawer,
@@ -27,6 +27,14 @@ export function GuessChat({
   const [input, setInput] = useState('');
   const feedRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const cursorRef = useRef<number | null>(null);
+
+  // Preserve caret position on mobile and avoid cursor jumping to index 0
+  useLayoutEffect(() => {
+    if (inputRef.current && cursorRef.current !== null && document.activeElement === inputRef.current) {
+      inputRef.current.setSelectionRange(cursorRef.current, cursorRef.current);
+    }
+  }, [input]);
 
   useEffect(() => {
     const el = feedRef.current;
@@ -50,7 +58,13 @@ export function GuessChat({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && document.activeElement !== inputRef.current && !isDrawer) {
+      if (
+        e.key === 'Enter' &&
+        document.activeElement !== inputRef.current &&
+        !isDrawer &&
+        inputRef.current &&
+        inputRef.current.offsetParent !== null
+      ) {
         const activeTag = (document.activeElement as HTMLElement | null)?.tagName;
         if (activeTag !== 'INPUT' && activeTag !== 'TEXTAREA' && activeTag !== 'BUTTON') {
           inputRef.current?.focus();
@@ -61,10 +75,17 @@ export function GuessChat({
     return () => window.removeEventListener('keydown', onKey);
   }, [isDrawer]);
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    cursorRef.current = e.target.selectionStart;
+    setInput(val);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = input.trim();
     if (!trimmed) return;
+    cursorRef.current = null;
     onSendGuess(trimmed);
     setInput('');
   };
@@ -167,8 +188,13 @@ export function GuessChat({
         <input
           ref={inputRef}
           type="text"
+          dir="ltr"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={handleChange}
           maxLength={120}
           placeholder={placeholder}
           className="flex-1 min-w-0 min-h-[38px] px-3 py-1.5 rounded-xl bg-[#F4F2ED] border border-transparent focus:border-zinc-900 focus:bg-white text-xs text-zinc-900 placeholder:text-zinc-400 outline-none transition-colors"
@@ -183,4 +209,4 @@ export function GuessChat({
       </form>
     </aside>
   );
-}
+});
