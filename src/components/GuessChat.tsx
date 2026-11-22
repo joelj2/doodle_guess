@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Lightbulb, Send } from 'lucide-react';
 import { motion } from 'motion/react';
 import type { ChatMessage, GamePhase } from '../shared/types.ts';
@@ -24,17 +24,8 @@ export const GuessChat = React.memo(function GuessChat({
   onSendGuess,
   onSendReaction,
 }: GuessChatProps) {
-  const [input, setInput] = useState('');
   const feedRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const cursorRef = useRef<number | null>(null);
-
-  // Preserve caret position on mobile and avoid cursor jumping to index 0
-  useLayoutEffect(() => {
-    if (inputRef.current && cursorRef.current !== null && document.activeElement === inputRef.current) {
-      inputRef.current.setSelectionRange(cursorRef.current, cursorRef.current);
-    }
-  }, [input]);
 
   useEffect(() => {
     const el = feedRef.current;
@@ -56,38 +47,14 @@ export const GuessChat = React.memo(function GuessChat({
     }
   }, []);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (
-        e.key === 'Enter' &&
-        document.activeElement !== inputRef.current &&
-        !isDrawer &&
-        inputRef.current &&
-        inputRef.current.offsetParent !== null
-      ) {
-        const activeTag = (document.activeElement as HTMLElement | null)?.tagName;
-        if (activeTag !== 'INPUT' && activeTag !== 'TEXTAREA' && activeTag !== 'BUTTON') {
-          inputRef.current?.focus();
-        }
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isDrawer]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    cursorRef.current = e.target.selectionStart;
-    setInput(val);
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = input.trim();
+    const input = inputRef.current;
+    if (!input) return;
+    const trimmed = input.value.trim();
     if (!trimmed) return;
-    cursorRef.current = null;
     onSendGuess(trimmed);
-    setInput('');
+    input.value = '';
   };
 
   const placeholder =
@@ -183,18 +150,17 @@ export const GuessChat = React.memo(function GuessChat({
         })}
       </div>
 
-      {/* Guess Input */}
+      {/* Guess Input (Native uncontrolled input prevents virtual keyboard caret resets) */}
       <form onSubmit={handleSubmit} className="pt-2 border-t border-[#E4E2DC] flex items-center gap-1.5 shrink-0">
         <input
           ref={inputRef}
           type="text"
           dir="ltr"
+          defaultValue=""
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck={false}
-          value={input}
-          onChange={handleChange}
           maxLength={120}
           placeholder={placeholder}
           className="flex-1 min-w-0 min-h-[38px] px-3 py-1.5 rounded-xl bg-[#F4F2ED] border border-transparent focus:border-zinc-900 focus:bg-white text-xs text-zinc-900 placeholder:text-zinc-400 outline-none transition-colors"
