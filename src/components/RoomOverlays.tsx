@@ -219,11 +219,8 @@ export function WordChoiceOverlay({ options, timeLeft, onSelect }: WordChoiceOve
               key={opt.word}
               type="button"
               onClick={() => onSelect(opt.word)}
-              className="min-h-[56px] group p-3 rounded-xl bg-[#F4F2ED] hover:bg-zinc-900 border border-[#E4E2DC] hover:border-zinc-900 transition-colors cursor-pointer flex flex-col items-center justify-center gap-0.5"
+              className="min-h-[52px] group px-3.5 py-3 rounded-xl bg-[#F4F2ED] hover:bg-zinc-900 border border-[#E4E2DC] hover:border-zinc-900 transition-colors cursor-pointer flex items-center justify-center text-center"
             >
-              <span className="text-[10px] font-medium text-zinc-500 group-hover:text-zinc-300">
-                {opt.category}
-              </span>
               <span className="font-display text-sm sm:text-base font-bold text-zinc-900 group-hover:text-white">
                 {opt.word}
               </span>
