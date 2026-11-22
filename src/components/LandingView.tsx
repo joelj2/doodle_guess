@@ -108,7 +108,7 @@ export function LandingView({
                   onClick={() => onCreateRoom()}
                   className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs sm:text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap"
                 >
-                  <span>{connecting ? 'Connecting...' : 'Create New Room'}</span>
+                  <span>{connecting ? 'Creating Room...' : 'Create New Room'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
 
@@ -116,9 +116,9 @@ export function LandingView({
                   <input
                     type="text"
                     value={joinCode}
-                    onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                    maxLength={8}
-                    placeholder="Enter room code (e.g. INK4)"
+                    onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
+                    maxLength={4}
+                    placeholder="Enter 4-letter code (e.g. INK4)"
                     className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-[#F4F2ED] border border-[#E4E2DC] focus:border-zinc-900 focus:bg-white font-mono-tabular text-xs sm:text-sm font-semibold uppercase text-zinc-900 placeholder:normal-case placeholder:font-sans placeholder:font-normal placeholder:text-zinc-400 outline-none"
                   />
                   <button
@@ -126,7 +126,7 @@ export function LandingView({
                     disabled={connecting || !joinCode.trim()}
                     className="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 text-white text-xs sm:text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
                   >
-                    Join Room
+                    {connecting ? 'Connecting...' : 'Join Room'}
                   </button>
                 </form>
               </div>

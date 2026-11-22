@@ -37,29 +37,18 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' },
   { urls: 'stun:stun.cloudflare.com:3478' },
-  // OpenRelay by Metered - Free global TURN relay for symmetric NAT, CGNAT (mobile 4G/5G) and strict firewalls
+  { urls: 'stun:openrelay.metered.ca:80' },
+  // OpenRelay by Metered - Free global TURN relay for mobile 4G/5G cellular & symmetric NATs
   {
     urls: 'turn:openrelay.metered.ca:80',
-    username: 'openrelay',
-    credential: 'openrelay',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
   },
   {
     urls: 'turn:openrelay.metered.ca:443',
-    username: 'openrelay',
-    credential: 'openrelay',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-    username: 'openrelay',
-    credential: 'openrelay',
-  },
-  {
-    urls: 'turns:openrelay.metered.ca:443?transport=tcp',
-    username: 'openrelay',
-    credential: 'openrelay',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
   },
   ...(user && pass
     ? [
@@ -72,8 +61,6 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
 
 export const ICE_CONFIG: RTCConfiguration = {
   iceServers: DEFAULT_ICE_SERVERS,
-  iceCandidatePoolSize: 10,
-  bundlePolicy: 'max-bundle',
 };
 
 const ROOM_CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -146,6 +133,8 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
   const prevHintCountRef = useRef<number>(0);
   const optionsRef = useRef(options);
   optionsRef.current = options;
+  const roomStateRef = useRef<RoomStateSync | null>(null);
+  roomStateRef.current = roomState;
 
   // Track profile and current room for mobile auto-reconnect
   const lastJoinedCodeRef = useRef<string | null>(null);
@@ -188,7 +177,7 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
   const sendToGuest = useCallback((guestId: string, msg: PeerMessageToGuest) => {
     try {
       const conn = hostConnsRef.current[guestId];
-      if (conn && conn.open) {
+      if (conn) {
         conn.send(msg);
       }
     } catch {
@@ -312,6 +301,9 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
             existing.connected = true;
             existing.lastSeen = Date.now();
           }
+          // Immediately send current tailored state directly to the connecting guest
+          const guestState = buildStateForPlayer(room, senderId, Date.now());
+          sendToGuest(senderId, { type: 'room:state', state: guestState });
           broadcastFullState();
           break;
         }
@@ -722,6 +714,15 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
       setStartError(null);
       lastProfileRef.current = { name: name.trim(), avatar };
 
+      if (guestConnRef.current) {
+        try { guestConnRef.current.close(); } catch {}
+        guestConnRef.current = null;
+      }
+      if (peerRef.current) {
+        try { peerRef.current.destroy(); } catch {}
+        peerRef.current = null;
+      }
+
       try {
         const { Peer } = await import('peerjs');
         const code = generate4LetterCode();
@@ -736,7 +737,7 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
 
         peer.on('error', (err) => {
           if (err.type === 'unavailable-id' && tries < 5) {
-            peer.destroy();
+            try { peer.destroy(); } catch {}
             void createRoom(name, avatar, settingsPartial, tries + 1);
             return;
           }
@@ -755,10 +756,13 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
 
           // Listen for incoming guests (mobile / laptop)
           peer.on('connection', (conn) => {
+            hostConnsRef.current[conn.peer] = conn;
+
             conn.on('open', () => {
               hostConnsRef.current[conn.peer] = conn;
             });
             conn.on('data', (data) => {
+              hostConnsRef.current[conn.peer] = conn;
               handleHostAction(conn.peer, data as PeerMessageToHost);
             });
             conn.on('close', () => {
@@ -794,7 +798,7 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
   // Guest: Join Room
   const joinRoom = useCallback(
     async (code: string, name: string, avatar: AvatarConfig) => {
-      const cleanCode = code.trim().toUpperCase();
+      const cleanCode = code.trim().toUpperCase().replace(/[^A-Z]/g, '');
       if (!name.trim()) {
         setErrorMsg('Please enter a nickname.');
         return;
@@ -810,6 +814,15 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
       lastJoinedCodeRef.current = cleanCode;
       lastProfileRef.current = { name: name.trim(), avatar };
 
+      if (guestConnRef.current) {
+        try { guestConnRef.current.close(); } catch {}
+        guestConnRef.current = null;
+      }
+      if (peerRef.current) {
+        try { peerRef.current.destroy(); } catch {}
+        peerRef.current = null;
+      }
+
       try {
         const { Peer } = await import('peerjs');
         const peer = new Peer({
@@ -821,6 +834,7 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
 
         peer.on('error', (err) => {
           setConnecting(false);
+          lastJoinedCodeRef.current = null;
           if (err.type === 'peer-unavailable') {
             setErrorMsg(`Room "${cleanCode}" not found or host is offline.`);
           } else {
@@ -835,25 +849,39 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
           const targetPeerId = 'doodle-' + cleanCode;
           const conn = peer.connect(targetPeerId, {
             reliable: true,
-            serialization: 'json',
           });
           guestConnRef.current = conn;
 
-          const timeoutId = setTimeout(() => {
-            if (!conn.open && !roomState) {
-              setConnecting(false);
-              setErrorMsg('Connection to host timed out. Please check the room code.');
-              conn.close();
+          const sendJoin = () => {
+            try {
+              conn.send({
+                type: 'join',
+                name: name.trim(),
+                avatar,
+              } satisfies PeerMessageToHost);
+            } catch {
+              // ignore
             }
-          }, 9000);
+          };
+
+          const timeoutId = setTimeout(() => {
+            if (!conn.open && !roomStateRef.current) {
+              setConnecting(false);
+              lastJoinedCodeRef.current = null;
+              setErrorMsg(`Could not connect to room "${cleanCode}". Make sure the host is currently in the room and check the code.`);
+              try { conn.close(); } catch {}
+            }
+          }, 25000);
 
           conn.on('open', () => {
-            clearTimeout(timeoutId);
-            conn.send({
-              type: 'join',
-              name: name.trim(),
-              avatar,
-            } satisfies PeerMessageToHost);
+            sendJoin();
+
+            // Resend join after 1.2s if state hasn't arrived
+            setTimeout(() => {
+              if (conn.open && !roomStateRef.current) {
+                sendJoin();
+              }
+            }, 1200);
 
             // Sync URL with room code
             const url = new URL(window.location.href);
@@ -861,14 +889,18 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
             window.history.replaceState({}, '', url.toString());
           });
 
+          if (conn.open) {
+            sendJoin();
+          }
+
           conn.on('data', (data) => {
+            clearTimeout(timeoutId);
             handleGuestMessage(data as PeerMessageToGuest);
           });
 
           conn.on('close', () => {
             clearTimeout(timeoutId);
             setConnecting(false);
-            // If tab is visible and dropped, notify user
             if (document.visibilityState === 'visible') {
               setErrorMsg('Host closed the room or disconnected.');
               setRoomState(null);
@@ -876,10 +908,11 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
             }
           });
 
-          conn.on('error', () => {
+          conn.on('error', (err) => {
             clearTimeout(timeoutId);
             setConnecting(false);
-            setErrorMsg('Connection error with host.');
+            lastJoinedCodeRef.current = null;
+            setErrorMsg(`Connection error with host: ${err?.type ?? 'network issue'}`);
           });
         });
       } catch {
@@ -887,7 +920,7 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
         setErrorMsg('Failed to initialize PeerJS guest.');
       }
     },
-    [handleGuestMessage, roomState]
+    [handleGuestMessage]
   );
 
   // Auto-reconnect when switching back to tab on mobile
@@ -895,7 +928,7 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
     if (isHost) return;
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && lastJoinedCodeRef.current && !isHost) {
+      if (document.visibilityState === 'visible' && lastJoinedCodeRef.current && !isHost && roomStateRef.current) {
         const conn = guestConnRef.current;
         if (!conn || !conn.open) {
           const code = lastJoinedCodeRef.current;
