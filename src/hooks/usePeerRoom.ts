@@ -33,12 +33,7 @@ const user = process.env.NEXT_PUBLIC_TURN_USER;
 const pass = process.env.NEXT_PUBLIC_TURN_PASS;
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
-  // Fast global STUN servers (Google & Cloudflare)
   { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-  // Optional TURN relay (set NEXT_PUBLIC_TURN_USER / NEXT_PUBLIC_TURN_PASS in Vercel for strict cellular NATs)
   ...(user && pass
     ? [
         { urls: 'turn:global.relay.metered.ca:80', username: user, credential: pass },
@@ -716,7 +711,6 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
 
         const peer = new Peer(peerId, {
           config: ICE_CONFIG,
-          debug: 1,
         });
         peerRef.current = peer;
         setPeerInstance(peer);
@@ -813,7 +807,6 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
         const { Peer } = await import('peerjs');
         const peer = new Peer({
           config: ICE_CONFIG,
-          debug: 1,
         });
         peerRef.current = peer;
         setPeerInstance(peer);
@@ -895,16 +888,7 @@ export function usePeerRoom(options: UsePeerRoomOptions = {}) {
           });
 
           conn.on('error', (err) => {
-            clearTimeout(timeoutId);
-            setConnecting(false);
-            lastJoinedCodeRef.current = null;
-            const msg =
-              err?.type === 'negotiation-failed'
-                ? 'Connection failed. Please ensure the host is online and try again.'
-                : err?.type
-                ? `Connection error: ${err.type}`
-                : 'Connection error with host.';
-            setErrorMsg(msg);
+            console.warn('Guest connection warning:', err);
           });
         });
       } catch {
