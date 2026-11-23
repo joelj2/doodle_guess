@@ -52,14 +52,6 @@ export default function App() {
   const [eventBanner, setEventBanner] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>('chat');
   const [muted, setMuted] = useState(() => soundFX.isMuted());
-  const [isDesktop, setIsDesktop] = useState(false);
-
-  useEffect(() => {
-    const handleResize = () => setIsDesktop(window.innerWidth >= 1024);
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -341,16 +333,14 @@ export default function App() {
 
           {/* Desktop Right Column: Guesses & Chat */}
           <div className="lg:col-span-3 flex flex-col h-[620px]">
-            {isDesktop && (
-              <GuessChat
-                messages={roomState.messages}
-                phase={roomState.phase}
-                isDrawer={isDrawer}
-                hasGuessed={hasGuessed}
-                onSendGuess={sendGuess}
-                onSendReaction={sendReaction}
-              />
-            )}
+            <GuessChat
+              messages={roomState.messages}
+              phase={roomState.phase}
+              isDrawer={isDrawer}
+              hasGuessed={hasGuessed}
+              onSendGuess={sendGuess}
+              onSendReaction={sendReaction}
+            />
           </div>
         </div>
 
@@ -436,7 +426,7 @@ export default function App() {
 
           {/* Mobile Active Tab Content: Takes flex-1 so input sticks above keyboard */}
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-            {!isDesktop && mobileTab === 'chat' && (
+            {mobileTab === 'chat' && (
               <GuessChat
                 messages={roomState.messages}
                 phase={roomState.phase}
