@@ -163,7 +163,7 @@ export const GuessChat = React.memo(function GuessChat({
           spellCheck={false}
           maxLength={120}
           placeholder={placeholder}
-          className="flex-1 min-w-0 min-h-[38px] px-3 py-1.5 rounded-xl bg-[#F4F2ED] border border-transparent focus:border-zinc-900 focus:bg-white text-xs text-zinc-900 placeholder:text-zinc-400 outline-none transition-colors"
+          className="flex-1 min-w-0 min-h-[38px] px-3 py-1.5 rounded-xl bg-[#F4F2ED] border border-transparent focus:border-zinc-900 focus:bg-white text-xs text-zinc-900 placeholder:text-zinc-400 outline-none transition-colors select-text"
         />
         <button
           type="submit"

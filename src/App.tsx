@@ -241,7 +241,7 @@ export default function App() {
   const voiceCount = playersWithVoice.filter((p) => p.voiceJoined).length;
 
   return (
-    <div className="h-[100dvh] max-h-[100dvh] lg:h-auto lg:max-h-none lg:min-h-screen bg-[#F4F2ED] text-zinc-900 flex flex-col overflow-hidden lg:overflow-visible select-none">
+    <div className="h-[100dvh] max-h-[100dvh] lg:h-auto lg:max-h-none lg:min-h-screen bg-[#F4F2ED] text-zinc-900 flex flex-col overflow-hidden lg:overflow-visible">
       <div className="w-full max-w-[1400px] mx-auto p-2 sm:p-3 lg:py-3.5 flex flex-col flex-1 min-h-0 space-y-2 lg:space-y-3">
         {/* Responsive Compact Header */}
         <WordHeader
