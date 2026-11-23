@@ -14,14 +14,12 @@
     color: #18181b;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    direction: ltr;
   }
 
   input,
   textarea {
-    -webkit-user-select: text !important;
-    user-select: text !important;
-    direction: ltr;
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   h1,

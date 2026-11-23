@@ -26,6 +26,7 @@ export const GuessChat = React.memo(function GuessChat({
 }: GuessChatProps) {
   const feedRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const prevValRef = useRef('');
 
   useEffect(() => {
     const el = feedRef.current;
@@ -34,18 +35,33 @@ export const GuessChat = React.memo(function GuessChat({
     }
   }, [messages.length]);
 
-  // Re-scroll to bottom if viewport resizes (e.g. mobile virtual keyboard pop-up)
-  useEffect(() => {
-    const handleResize = () => {
-      if (feedRef.current) {
-        feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  const handleInput = (e: React.FormEvent<HTMLInputElement>) => {
+    const target = e.currentTarget;
+    const curr = target.value;
+    const prev = prevValRef.current;
+
+    // Detect if mobile browser/IME prepended newly typed characters to index 0 instead of appending
+    if (curr.length > prev.length && prev.length > 0) {
+      const insertedLen = curr.length - prev.length;
+      if (curr.slice(insertedLen) === prev) {
+        // Prepending bug detected! Move newly typed characters to the end
+        const inserted = curr.slice(0, insertedLen);
+        const corrected = prev + inserted;
+        target.value = corrected;
+        target.setSelectionRange(corrected.length, corrected.length);
+        prevValRef.current = corrected;
+        return;
       }
-    };
-    if (typeof window !== 'undefined' && window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleResize);
-      return () => window.visualViewport?.removeEventListener('resize', handleResize);
     }
-  }, []);
+
+    prevValRef.current = curr;
+  };
+
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    const target = e.currentTarget;
+    const len = target.value.length;
+    target.setSelectionRange(len, len);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,6 +71,7 @@ export const GuessChat = React.memo(function GuessChat({
     if (!trimmed) return;
     onSendGuess(trimmed);
     input.value = '';
+    prevValRef.current = '';
   };
 
   const placeholder =
@@ -150,20 +167,16 @@ export const GuessChat = React.memo(function GuessChat({
         })}
       </div>
 
-      {/* Guess Input (Native uncontrolled input prevents virtual keyboard caret resets) */}
+      {/* Guess Input */}
       <form onSubmit={handleSubmit} className="pt-2 border-t border-[#E4E2DC] flex items-center gap-1.5 shrink-0">
         <input
           ref={inputRef}
           type="text"
-          dir="ltr"
-          defaultValue=""
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
+          onInput={handleInput}
+          onFocus={handleFocus}
           maxLength={120}
           placeholder={placeholder}
-          className="flex-1 min-w-0 min-h-[38px] px-3 py-1.5 rounded-xl bg-[#F4F2ED] border border-transparent focus:border-zinc-900 focus:bg-white text-xs text-zinc-900 placeholder:text-zinc-400 outline-none transition-colors select-text"
+          className="flex-1 min-w-0 min-h-[38px] px-3 py-1.5 rounded-xl bg-[#F4F2ED] border border-transparent focus:border-zinc-900 focus:bg-white text-xs text-zinc-900 placeholder:text-zinc-400 outline-none transition-colors"
         />
         <button
           type="submit"
